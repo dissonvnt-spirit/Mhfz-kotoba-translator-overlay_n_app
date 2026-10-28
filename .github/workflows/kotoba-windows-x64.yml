@@ -1,0 +1,104 @@
+name: Build Kotoba Overlay for Windows x64
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    tags: ["v*"]
+    paths:
+      - "artifacts/kotoba-overlay/**"
+      - "lib/api-client-react/**"
+      - "lib/api-spec/**"
+      - "lib/api-zod/**"
+      - "lib/db/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/kotoba-windows-x64.yml"
+      - "package.json"
+      - "scripts/require-pnpm.cjs"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install NSIS
+        run: choco install nsis --yes --no-progress
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Windows installer
+        run: pnpm --filter @workspace/kotoba-overlay run desktop:build:windows
+
+      - name: Verify the app executable is 64-bit Windows
+        shell: pwsh
+        run: |
+          $app = "artifacts/kotoba-overlay/src-tauri/target/x86_64-pc-windows-msvc/release/kotoba-overlay.exe"
+          if (-not (Test-Path $app)) { throw "Tauri app executable was not produced." }
+          $bytes = [System.IO.File]::ReadAllBytes($app)
+          if ($bytes.Length -lt 256 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw "App is not a valid Windows PE executable." }
+          $peOffset = [BitConverter]::ToInt32($bytes, 0x3C)
+          if ($peOffset -lt 0 -or $peOffset + 6 -gt $bytes.Length) { throw "App has an invalid PE header." }
+          $machine = [BitConverter]::ToUInt16($bytes, $peOffset + 4)
+          if ($machine -ne 0x8664) { throw ("Expected x64 app machine type 0x8664; got 0x{0:X4}." -f $machine) }
+          Write-Host ("Verified x64 app: {0} ({1:N1} MB)" -f $app, ($bytes.Length / 1MB))
+
+      - name: Verify the NSIS installer exists
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem "artifacts/kotoba-overlay/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis" -Filter "*.exe" | Select-Object -First 1
+          if (-not $installer) { throw "NSIS installer was not produced." }
+          $bytes = [System.IO.File]::ReadAllBytes($installer.FullName)
+          if ($bytes.Length -lt 256 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw "Installer is not a valid Windows executable." }
+          Write-Host ("Installer ready: {0} ({1:N1} MB)" -f $installer.FullName, ($installer.Length / 1MB))
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kotoba-overlay-windows-x64-installer
+          path: artifacts/kotoba-overlay/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kotoba-overlay-windows-x64-portable
+          path: artifacts/kotoba-overlay/src-tauri/target/x86_64-pc-windows-msvc/release/kotoba-overlay.exe
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Publish Windows downloads
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release-assets/*.exe \
+            --title "Kotoba Overlay $GITHUB_REF_NAME" \
+            --notes "Windows x64 build. Download the setup executable for installation or kotoba-overlay.exe for portable use. WebView2 and a configured translation API URL with its service token are required. This build is unsigned; Windows may display a SmartScreen warning. Real-game behavior has not been verified on Windows."

@@ -1,0 +1,91 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: translation
+    description: Game text translation operations
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /translate:
+    post:
+      operationId: translateGameText
+      tags: [translation]
+      summary: Translate detected game text
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TranslationInput"
+      responses:
+        "200":
+          description: Translated game text
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranslationResult"
+        "400":
+          description: Invalid translation request
+        "401":
+          description: Missing or invalid service token
+        "429":
+          description: Translation request rate limit reached
+        "502":
+          description: Translation provider error
+        "503":
+          description: Translation provider is not configured
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    TranslationInput:
+      type: object
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 2000
+      required:
+        - text
+    TranslationResult:
+      type: object
+      properties:
+        sourceText:
+          type: string
+        translatedText:
+          type: string
+      required:
+        - sourceText
+        - translatedText
+
