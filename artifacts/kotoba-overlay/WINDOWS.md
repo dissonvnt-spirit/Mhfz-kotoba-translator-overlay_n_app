@@ -46,13 +46,12 @@ failure selects cloud translation. Only authored diagnostics leave the worker;
 raw exceptions, signed download URLs, device paths and dialogue are not logged
 or displayed as setup errors.
 
-**Current evidence:** the pinned configuration, tokenizer and quantized encoder
-URLs were reachable from this Linux workspace using the Windows WebView origin.
-The user's original 0.2.4 failure has **not been reproduced or identified**.
-The changes add diagnostics and repair failed-worker retry/storage handling;
-they are **not proof that the reported first-download failure is fixed**.
-Installed Windows preparation and Japanese-to-English inference remain
-unverified until the Windows check below has actually run successfully.
+**Current evidence:** installed Windows preparation and local Japanese-to-English
+inference passed on the hosted Windows runner described below. The user's
+original 0.2.4 failure has **not been reproduced or attributed to a specific
+cause**. The changes repair failed-worker retry/storage handling and provide
+safe diagnostics if setup still fails on the affected player's machine.
+The hosted-runner pass is not a claim that the original machine has been tested.
 
 Optional cloud translation uses the preconfigured published Kotoba service
 after player consent. No player API key or service token is required. The
@@ -136,8 +135,41 @@ The hosted runner already has desktop prerequisites; a pass does not prove
 WebView2 bootstrap behavior on a clean/offline player machine. Physical Windows
 and live-game verification remain separate work. This Linux workspace cannot
 execute these native checks; their results are available in GitHub Actions.
-The newly added local preparation/self-test check has not yet run on Windows.
+The local preparation/self-test check passed on Windows as recorded below.
 It does not cover offline cache reload after restart or upgrade preservation.
+
+### Installed Windows verification: 2026-10-28
+
+[GitHub Actions verification run](https://github.com/dissonvnt-spirit/Mhfz-kotoba-translator-overlay_n_app/actions/runs/40784399832)
+tested the product-only `verify/offline-model-setup` branch at
+`8c616f965b158c8c1a08444ddf0587108793f200`.
+No main-branch merge, release tag, published installer or production deployment
+was performed.
+
+- Environment: hosted `windows-latest`, Microsoft Windows Server 2025,
+  runner image `windows-2025-vs2026`; not the player's reported Windows 11 machine.
+- Built installer: `MHFZ-Z Translator Overlay_0.2.5_x64-setup.exe` (31.4 MB).
+  Executable PE architecture and installer existence checks passed.
+- All eight worker/controller boundary tests, all six release checks, and the
+  native PowerShell safe-diagnostic parser checks passed.
+- Silent installation, installed executable startup and initial online local-model
+  preparation passed. The script advanced from `initial-local-model-preparation`
+  at 23:06:03 UTC to `overlay-open` at 23:06:09 UTC only after the UI reported
+  successful local inference of the fixed Japanese self-test sentence.
+  This exercised the actual packaged worker, WASM runtime, CSP and WebView model
+  storage without cloud consent or cloud translation.
+- **Overall workflow failed later:** `overlay-mouse-resize` timed out after
+  45 seconds. The local-model check passed; the entire Windows smoke check did
+  not. Installer download artifacts and the release job were not published.
+  Overlay reuse/reopen checks after resizing were not reached.
+- The `windows-smoke-diagnostics` artifact was uploaded. The secure GitHub
+  connection allowed job-log inspection but denied its ZIP download; the model
+  pass above is independently evidenced by the recorded stage transitions and
+  the script's exact ready-message gate. Do not claim the JSON was inspected.
+
+The remaining resize failure is separate from model preparation. No gameplay
+capture, OCR, original-machine reproduction, clean-machine WebView2 bootstrap,
+restart persistence or upgrade preservation is established by this run.
 
 ## Clean-machine WebView2 test checklist
 
