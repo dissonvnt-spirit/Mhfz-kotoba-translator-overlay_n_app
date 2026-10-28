@@ -4,12 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node scripts/prepare-ocr.cjs && vite --config vite.config.ts --host 0.0.0.0",
+    "dev": "node scripts/prepare-ocr.cjs && node scripts/prepare-offline.cjs && vite --config vite.config.ts --host 0.0.0.0",
     "desktop:dev": "tauri dev",
     "desktop:build:windows": "tauri build --target x86_64-pc-windows-msvc",
-    "build": "node scripts/prepare-ocr.cjs && vite build --config vite.config.ts",
+    "build": "node scripts/prepare-ocr.cjs && node scripts/prepare-offline.cjs && vite build --config vite.config.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:release-notes": "node --test scripts/release-notes.test.mjs"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -43,7 +44,7 @@
     "@replit/vite-plugin-cartographer": "catalog:",
     "@replit/vite-plugin-dev-banner": "catalog:",
     "@replit/vite-plugin-runtime-error-modal": "catalog:",
-    "@tailwindcss/typography": "^0.5.15",
+    "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@tauri-apps/cli": "^2.12.3",
@@ -78,6 +79,7 @@
     "zod": "catalog:"
   },
   "dependencies": {
+    "@huggingface/transformers": "^3.8.1",
     "@tauri-apps/api": "^2.12.4",
     "tesseract.js": "^7.0.0"
   }

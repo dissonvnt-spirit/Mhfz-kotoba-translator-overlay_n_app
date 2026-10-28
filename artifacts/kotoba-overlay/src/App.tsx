@@ -5,7 +5,9 @@ import { Form } from '@/components/ui/form';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
-import { setAuthTokenGetter, setBaseUrl, useTranslateGameText } from '@workspace/api-client-react';
+import { setBaseUrl, useTranslatePublicGameText } from '@workspace/api-client-react';
+import { OfflineTranslator } from '@/lib/offline-translation';
+import { TranslationOptions, type TranslationMode } from '@/components/translation-options';
 import { isTauri } from '@tauri-apps/api/core';
 import { useForm } from 'react-hook-form';
 import { createWorker, type Worker } from 'tesseract.js';
@@ -31,18 +33,25 @@ const API_BASE_KEY = 'kotoba-translation-api-base';
 const OVERLAY_CHANNEL = 'kotoba-overlay-sync';
 const JAPANESE_TEXT = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/;
 const MAX_SAVED_LINES = 50;
+const DEFAULT_CLOUD_URL = 'https://Mhfzz-game-translator.replit.app';
 
 function Home() {
   const isOverlay = new URLSearchParams(window.location.search).get('overlay') === '1';
   const isDesktop = isTauri();
-  const translate = useTranslateGameText();
+  const translate = useTranslatePublicGameText({ request: { headers: { 'X-Kotoba-Cloud-Consent': 'yes' } } });
+  const [translationMode, setTranslationMode] = useState<TranslationMode>('offline');
+  const modeRef = useRef<TranslationMode>('offline');
+  const localTranslator = useRef<OfflineTranslator | null>(null);
+  const [offlineStatus, setOfflineStatus] = useState('Prepare the model once while online. Previously downloaded models load from this device.');
+  const [offlineBusy, setOfflineBusy] = useState(false);
+  const [translationBusy, setTranslationBusy] = useState(false);
+  const [online, setOnline] = useState(navigator.onLine);
   const manualForm = useForm<{ text: string }>({ defaultValues: { text: '' } });
-  const apiForm = useForm<{ url: string; token: string }>({
-    defaultValues: { url: localStorage.getItem(API_BASE_KEY) || '', token: '' },
+  const apiForm = useForm<{ url: string }>({
+    defaultValues: { url: localStorage.getItem(API_BASE_KEY) || (isDesktop ? DEFAULT_CLOUD_URL : '') },
   });
   const draft = manualForm.watch('text') ?? '';
   const apiBaseUrl = apiForm.watch('url') ?? '';
-  const tokenDraft = apiForm.watch('token') ?? '';
   const [captureState, setCaptureState] = useState<CaptureState>('idle');
   const [ocrOrientation, setOcrOrientation] = useState<'horizontal' | 'vertical'>('horizontal');
   const [ocrRegion, setOcrRegion] = useState<OCRRegion | null>(null);
@@ -60,7 +69,6 @@ function Home() {
   const [ocrProgress, setOcrProgress] = useState(0);
   const [translationError, setTranslationError] = useState('');
   const [apiSaved, setApiSaved] = useState(false);
-  const [serviceTokenSet, setServiceTokenSet] = useState(false);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -75,7 +83,6 @@ function Home() {
   const translatingRef = useRef(false);
   const recentTextRef = useRef<string[]>([]);
   const overlayChannelRef = useRef<BroadcastChannel | null>(null);
-  const serviceTokenRef = useRef('');
   selectingRegionRef.current = selectingRegion;
   ocrRegionRef.current = ocrRegion;
 
@@ -186,49 +193,92 @@ function Home() {
   }, []);
 
   useEffect(() => {
-    if (isOverlay) return;
-    setAuthTokenGetter(() => serviceTokenRef.current || null);
-    return () => setAuthTokenGetter(null);
-  }, [isOverlay]);
+    const update = () => {
+      setOnline(navigator.onLine);
+      if (!navigator.onLine) {
+        modeRef.current = 'offline';
+        setTranslationMode('offline');
+      }
+    };
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    return () => {
+      window.removeEventListener('online', update);
+      window.removeEventListener('offline', update);
+    };
+  }, []);
 
   useEffect(() => () => {
     if (pollRef.current !== null) window.clearInterval(pollRef.current);
     streamRef.current?.getTracks().forEach((track) => track.stop());
     void workerRef.current?.terminate();
+    localTranslator.current?.dispose();
     overlayChannelRef.current?.close();
   }, []);
 
-  const translateText = async (text: string, clearDraft = false) => {
-    if (!text || translatingRef.current) return;
-    if (!serviceTokenRef.current) {
-      setTranslationError('Enter the service access token in Session setup before translating.');
-      return;
+  const changeTranslationMode = (mode: TranslationMode) => {
+    modeRef.current = mode;
+    setTranslationMode(mode);
+    setTranslationError('');
+    translate.reset();
+    recentTextRef.current = [];
+  };
+
+  const prepareOffline = async () => {
+    if (translatingRef.current || offlineBusy) return;
+    setOfflineBusy(true);
+    setOfflineStatus('Preparing local translation. Keep this window open…');
+    try {
+      localTranslator.current ??= new OfflineTranslator();
+      await localTranslator.current.prepare(setOfflineStatus);
+      recentTextRef.current = [];
+      setOfflineStatus('Local model ready. Translation and Japanese OCR can now run offline on this device.');
+    } catch {
+      setOfflineStatus('Local setup failed. Check your connection, free disk space and memory, then retry. Downloads already saved are reused.');
+    } finally {
+      setOfflineBusy(false);
     }
+  };
+
+  const translateText = async (text: string, clearDraft = false): Promise<boolean> => {
+    if (!text || translatingRef.current || offlineBusy) return false;
     translatingRef.current = true;
+    setTranslationBusy(true);
     setTranslationError('');
     try {
-      const result = await translate.mutateAsync({ data: { text } });
+      let result: { sourceText: string; translatedText: string };
+      if (modeRef.current === 'offline' || !navigator.onLine) {
+        localTranslator.current ??= new OfflineTranslator();
+        const translatedText = await localTranslator.current.translate(text, setOfflineStatus);
+        setOfflineStatus('Local model ready. Dialogue is translated entirely on this device.');
+        result = { sourceText: text, translatedText };
+      } else {
+        result = await translate.mutateAsync({ data: { text } });
+      }
       setLines((current) => [{ ...result, timestamp: Date.now() }, ...current].slice(0, MAX_SAVED_LINES));
       if (clearDraft) manualForm.reset({ text: '' });
+      return true;
     } catch (error) {
       const status = (error as { status?: number } | null)?.status;
-      if (status === 401) {
-        setTranslationError('The service token was rejected. Check it matches KOTOBA_API_TOKEN on the server.');
+      if (modeRef.current === 'offline' || !navigator.onLine) {
+        setTranslationError('Local translation could not run. Prepare the local model while online first. If it was downloaded, check free disk space and memory and retry. No dialogue was sent to the cloud.');
       } else if (status === 429) {
-        setTranslationError('Translation request limit reached. Wait a moment and try again.');
+        setTranslationError('Free cloud allowance reached. Switch to offline translation or try again later.');
       } else if (status === 503) {
-        setTranslationError('The translation service is not configured yet. Check its project Secrets.');
+        setTranslationError('Developer-funded cloud translation is unavailable. Please use offline translation.');
       } else {
         setTranslationError('Translation could not be reached. Check your connection and try again.');
       }
+      return false;
     } finally {
       translatingRef.current = false;
+      setTranslationBusy(false);
     }
   };
 
   const startCapture = async () => {
-    if (!serviceTokenRef.current) {
-      setCaptureError('Enter the service access token in Session setup before starting capture.');
+    if (offlineBusy) {
+      setCaptureError('Wait for local model preparation to finish before starting capture.');
       return;
     }
     setCaptureError('');
@@ -259,6 +309,7 @@ function Home() {
       const worker = await createWorker(ocrOrientation === 'vertical' ? 'jpn_vert' : 'jpn', undefined, {
         workerPath: new URL(`${import.meta.env.BASE_URL}ocr/worker.min.js`, window.location.href).href,
         corePath: new URL(`${import.meta.env.BASE_URL}ocr/`, window.location.href).href,
+        langPath: new URL(`${import.meta.env.BASE_URL}ocr/`, window.location.href).href,
         workerBlobURL: false,
         logger: ({ status, progress }) => {
           setOcrStatus(status.replaceAll('_', ' '));
@@ -367,19 +418,23 @@ function Home() {
 
   const submitText = manualForm.handleSubmit(({ text }) => {
     const value = text.trim();
-    if (!value || translate.isPending) return;
+    if (!value || translationBusy || offlineBusy) return;
+    if (value.length > 2000) {
+      setTranslationError('Enter at most 2000 characters of dialogue.');
+      return;
+    }
     void translateText(value, true);
   });
 
-  const saveApiBaseUrl = apiForm.handleSubmit(({ url, token }) => {
+  const saveApiBaseUrl = apiForm.handleSubmit(({ url }) => {
     const value = url.trim().replace(/\/+$/, '');
     if (value) {
       try {
         const parsed = new URL(value);
-        if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') throw new Error('invalid protocol');
+        if (parsed.protocol !== 'https:') throw new Error('invalid protocol');
         setBaseUrl(value);
       } catch {
-        setCaptureError('Enter a valid http or https URL for the published translation service.');
+        setCaptureError('Enter a valid HTTPS URL for the cloud translation service.');
         setApiSaved(false);
         return;
       }
@@ -387,11 +442,7 @@ function Home() {
       setBaseUrl(null);
     }
     localStorage.setItem(API_BASE_KEY, value);
-    if (token.trim()) {
-      serviceTokenRef.current = token.trim();
-      setServiceTokenSet(true);
-    }
-    apiForm.reset({ url: value, token: '' });
+    apiForm.reset({ url: value });
     setApiSaved(true);
     setCaptureError('');
   });
@@ -516,7 +567,7 @@ function Home() {
               <div>
                 <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[.2em] text-[#d5a34d]"><Monitor size={13} /> Capture source</div>
                 <h1 className="text-xl font-semibold tracking-[-.03em] sm:text-2xl">{captureName || 'Choose a game window'}</h1>
-                <p className="mt-1.5 max-w-lg text-sm leading-relaxed text-[#9a9ba0]">{captureState === 'capturing' ? 'Japanese text is read on your device. Only detected dialogue is sent to the translation service.' : 'Share a game window or display. Kotoba reads Japanese dialogue locally and translates new lines as they appear.'}</p>
+                <p className="mt-1.5 max-w-lg text-sm leading-relaxed text-[#9a9ba0]">{translationMode === 'offline' ? 'Read and translate Japanese dialogue on your device. Prepare the model once, then play offline without a key.' : 'Cloud mode sends recognized dialogue—not captured frames—to the developer’s service and OpenAI.'}</p>
               </div>
               <div className="flex items-center gap-2 rounded-lg border border-white/[.08] bg-black/10 px-3 py-2 text-[11px] text-[#b0b1b1]">
                 <ShieldCheck size={14} className="text-[#75c5a6]" /> Screen stays on your device
@@ -602,7 +653,7 @@ function Home() {
               </div>
             </div>
             <div className="mt-5 border-t border-white/[.07] pt-3 text-[11px] leading-relaxed text-[#777d82]">
-              <div className="flex items-center justify-between"><span>Translation engine</span><span className="font-mono-ui text-[#b3b2ad]">OpenAI · GPT-5 mini</span></div>
+              <div className="flex items-center justify-between"><span>Translation engine</span><span className="font-mono-ui text-[#b3b2ad]" data-testid="text-active-engine">{translationMode === 'offline' ? 'On-device · Japanese → English' : 'Cloud · OpenAI GPT-5 mini'}</span></div>
             </div>
           </div>
         </section>
@@ -620,7 +671,7 @@ function Home() {
               </div>
             </div>
             <div ref={transcriptRef} className="max-h-[420px] min-h-[258px] overflow-y-auto scroll-smooth">
-              {translate.isPending && (
+              {translationBusy && (
                 <div className="border-b border-white/[.06] px-5 py-5" data-testid="status-translating">
                   <div className="mb-3 flex items-center gap-2 font-mono-ui text-[9px] uppercase tracking-[.16em] text-[#d5a34d]"><LoaderCircle size={12} className="animate-spin" />Translating</div>
                   <div className="h-3 w-2/3 animate-pulse rounded bg-white/[.07]" /><div className="mt-3 h-3 w-1/2 animate-pulse rounded bg-white/[.05]" />
@@ -652,7 +703,7 @@ function Home() {
               <label htmlFor="dialogue-input" className="mb-2 flex items-center justify-between text-[10px] font-medium uppercase tracking-[.14em] text-[#81868a]"><span>Translate a line</span><span className="font-mono-ui normal-case tracking-normal">Japanese → English</span></label>
               <div className="flex gap-2">
                 <input id="dialogue-input" {...manualForm.register('text', { maxLength: 2000 })} value={draft} maxLength={2000} placeholder="Paste or type Japanese dialogue…" className="h-11 min-w-0 flex-1 rounded-lg border border-white/[.1] bg-[#20232a] px-3.5 font-jp text-sm text-[#e9e7df] outline-none placeholder:font-sans placeholder:text-[#6e747a] focus:border-[#d5a34d]/50 focus:ring-2 focus:ring-[#d5a34d]/10" data-testid="input-dialogue" />
-                <button type="submit" disabled={!draft.trim() || translate.isPending} className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#d5a34d] px-4 text-xs font-semibold text-[#201e19] transition-all hover:bg-[#e3b766] disabled:cursor-not-allowed disabled:opacity-45" data-testid="button-translate"><Languages size={14} /> Translate</button>
+                <button type="submit" disabled={!draft.trim() || translationBusy || offlineBusy} className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#d5a34d] px-4 text-xs font-semibold text-[#201e19] transition-all hover:bg-[#e3b766] disabled:cursor-not-allowed disabled:opacity-45" data-testid="button-translate"><Languages size={14} /> Translate</button>
               </div>
               <div className="mt-2 flex items-center justify-between text-[10px] text-[#656c72]"><span>Manual translation is available alongside automatic capture.</span><span className="font-mono-ui">{draft.length}/2000</span></div>
             </form>
@@ -689,7 +740,8 @@ function Home() {
                   <button onClick={() => void openOverlay()} className="flex h-7 items-center gap-1 rounded-md border border-white/[.1] px-2 text-[10px] text-[#c1beb4] hover:border-[#d5a34d]/40 hover:text-[#f1d39b]" data-testid="button-preview-overlay">{isDesktop ? 'Open' : 'Preview'} <ArrowUpRight size={11} /></button>
                 </div>
               </div>
-              <Form {...apiForm}>
+              <TranslationOptions mode={translationMode} onModeChange={changeTranslationMode} offlineStatus={offlineStatus} offlineBusy={offlineBusy} onPrepareOffline={() => void prepareOffline()} online={online} busy={translationBusy} />
+              {translationMode === 'cloud' && <Form {...apiForm}>
               <form onSubmit={saveApiBaseUrl} className="mt-4 border-t border-white/[.07] pt-4">
                 <label htmlFor="translation-api-url" className="mb-2 block text-[10px] font-medium uppercase tracking-[.14em] text-[#81868a]">Translation service URL</label>
                 <div className="flex gap-2">
@@ -704,28 +756,13 @@ function Home() {
                   />
                   <button type="submit" className="h-9 rounded-lg border border-white/[.12] px-2.5 text-[10px] text-[#c1beb4] transition-colors hover:border-[#d5a34d]/40 hover:text-[#f1d39b]" data-testid="button-save-api-url">Save</button>
                 </div>
-                {serviceTokenSet && <button type="button" onClick={() => { serviceTokenRef.current = ''; setServiceTokenSet(false); setApiSaved(false); }} className="mt-2 text-[10px] text-[#9b9fa0] hover:text-[#e89a8f]" data-testid="button-clear-service-token">Clear in-memory token</button>}
-                <label htmlFor="translation-api-token" className="mb-2 mt-3 block text-[10px] font-medium uppercase tracking-[.14em] text-[#81868a]">Service access token</label>
-                <input
-                  id="translation-api-token"
-                  type="password"
-                  autoComplete="off"
-                  spellCheck={false}
-                  maxLength={256}
-                  {...apiForm.register('token', { onChange: () => setApiSaved(false) })}
-                  value={tokenDraft}
-                  placeholder="Enter the matching KOTOBA_API_TOKEN"
-                  className="h-9 w-full rounded-lg border border-white/[.1] bg-[#20232a] px-2.5 text-[10px] text-[#e9e7df] outline-none placeholder:text-[#6e747a] focus:border-[#d5a34d]/50"
-                  data-testid="input-translation-api-token"
-                />
-                <p className="mt-2 text-[10px] leading-relaxed text-[#737a7e]">Use the API server’s KOTOBA_API_TOKEN, never your OpenAI key. It stays in this window’s memory. {serviceTokenSet && <span className="text-[#78c2a4]" data-testid="status-token-set">Token set for this session.</span>}</p>
-                <p className="mt-2 text-[10px] leading-relaxed text-[#737a7e]">{isDesktop ? 'Use your published Kotoba API domain; the OpenAI key stays on the server.' : 'Leave the URL blank to use this preview’s translation service.'} {apiSaved && <span className="text-[#78c2a4]" data-testid="status-api-saved">Settings saved</span>}</p>
+                <p className="mt-2 text-[10px] leading-relaxed text-[#737a7e]">No API key or service token needed. {isDesktop ? 'The developer’s published service is preconfigured.' : 'Leave the URL blank to use this preview’s service.'} Your cloud choice lasts only for this app session. {apiSaved && <span className="text-[#78c2a4]" data-testid="status-api-saved">Settings saved</span>}</p>
               </form>
-              </Form>
+              </Form>}
             </div>
             <div className="overflow-hidden rounded-2xl border border-[#78c2a4]/15 bg-[#1b2424] p-5">
               <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[.17em] text-[#79c7a7]"><ShieldCheck size={14} /> Built for your session</div>
-              <p className="text-[12px] leading-[1.7] text-[#a4b1aa]">Captured frames stay on your device for OCR. Only recognized Japanese text is sent to your configured translation service.</p>
+              <p className="text-[12px] leading-[1.7] text-[#a4b1aa]">{translationMode === 'offline' ? 'Captured frames and dialogue stay on your device. Local translation never calls the cloud service.' : 'You opted into cloud translation. Only recognized dialogue is sent to the developer’s service and OpenAI; captured frames stay on your device.'}</p>
               <div className="mt-4 flex items-center gap-2 border-t border-white/[.06] pt-3 font-mono-ui text-[9px] tracking-[.05em] text-[#76877e]"><span className="h-1.5 w-1.5 rounded-full bg-[#79c7a7]" /> No game files modified</div>
             </div>
             <div className="flex items-start gap-2.5 px-1 text-[10px] leading-relaxed text-[#737a7e]"><CircleHelp size={13} className="mt-0.5 shrink-0 text-[#858b8d]" /><p>For the overlay to appear over a game, use the Windows desktop build. Borderless-window mode is recommended for fullscreen games.</p></div>

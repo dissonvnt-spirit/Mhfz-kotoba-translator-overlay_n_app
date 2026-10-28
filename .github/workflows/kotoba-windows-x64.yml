@@ -26,6 +26,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Verify release versions match
+        shell: pwsh
+        run: |
+          $config = Get-Content artifacts/kotoba-overlay/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          $cargo = Get-Content artifacts/kotoba-overlay/src-tauri/Cargo.toml -Raw
+          $cargoVersion = [regex]::Match($cargo, '(?m)^version\s*=\s*"([^"]+)"').Groups[1].Value
+          if ($config.version -ne $cargoVersion) { throw "Tauri and Cargo versions must match." }
+          if ($env:GITHUB_REF -like "refs/tags/*" -and $env:GITHUB_REF_NAME -ne "v$($config.version)") {
+            throw "Release tag must match the installed Tauri version: v$($config.version)"
+          }
+
       - uses: pnpm/action-setup@v4
         with:
           version: 10.26.1
@@ -48,6 +59,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Verify release notes and GitHub-only update policy
+        run: pnpm --filter @workspace/kotoba-overlay run test:release-notes
 
       - name: Build Windows installer
         shell: pwsh
@@ -92,6 +106,29 @@ jobs:
           if ($bytes.Length -lt 256 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw "Installer is not a valid Windows executable." }
           Write-Host ("Installer ready: {0} ({1:N1} MB)" -f $installer.FullName, ($installer.Length / 1MB))
 
+      # Test the installed package, not the executable in the build directory.
+      # This runner has no game or translation credentials: this is not a gameplay test.
+      - name: Smoke test Windows installation and overlay
+        timeout-minutes: 10
+        shell: pwsh
+        run: |
+          # Windows PowerShell provides the desktop .NET UI Automation assemblies.
+          & powershell.exe -NoProfile -NonInteractive -STA -ExecutionPolicy Bypass `
+            -File artifacts/kotoba-overlay/scripts/windows-smoke.ps1 `
+            -BundleDirectory artifacts/kotoba-overlay/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis `
+            -InstallDirectory "$env:RUNNER_TEMP/Kotoba Smoke Install" `
+            -DiagnosticsDirectory "$env:RUNNER_TEMP/kotoba-smoke-diagnostics"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload Windows smoke diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-smoke-diagnostics
+          path: ${{ runner.temp }}/kotoba-smoke-diagnostics/smoke-result.json
+          if-no-files-found: ignore
+          retention-days: 7
+
       - uses: actions/upload-artifact@v4
         with:
           name: kotoba-overlay-windows-x64-installer
@@ -111,6 +148,8 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           path: release-assets
@@ -121,6 +160,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
+          set -euo pipefail
+          cd release-assets
+          sha256sum *.exe > SHA256SUMS.txt
+          sha256sum --check SHA256SUMS.txt
+          cd ..
           gh release create "$GITHUB_REF_NAME" release-assets/*.exe \
+            release-assets/SHA256SUMS.txt \
+            --verify-tag \
             --title "Kotoba Overlay $GITHUB_REF_NAME" \
-            --notes "Windows x64 build. Download the setup executable for installation or kotoba-overlay.exe for portable use. WebView2 and a configured translation API URL with its service token are required. This build is unsigned; Windows may display a SmartScreen warning. Real-game behavior has not been verified on Windows."
+            --notes-file "artifacts/kotoba-overlay/releases/$GITHUB_REF_NAME.md" \
+            --generate-notes

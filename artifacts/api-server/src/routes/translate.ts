@@ -42,7 +42,7 @@ const requireServiceToken: RequestHandler = (req, res, next) => {
   next();
 };
 
-router.post("/translate", requireServiceToken, translationRateLimit, async (req, res): Promise<void> => {
+router.post("/translate", translationRateLimit, requireServiceToken, async (req, res): Promise<void> => {
   const parsed = TranslateGameTextBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Enter Japanese text to translate." });

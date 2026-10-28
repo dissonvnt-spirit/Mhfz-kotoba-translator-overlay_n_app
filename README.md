@@ -8,17 +8,28 @@ Download the latest installer from [GitHub Releases](https://github.com/dissonvn
 
 The installer is recommended. The portable app requires Microsoft Edge WebView2 Runtime. Builds are currently unsigned, so Windows may show a SmartScreen warning. Windows/game interaction has not yet been tested on a physical Windows machine.
 
-Updates are distributed through GitHub Releases; the app does not silently install updates or contain an automatic updater.
+Updates and their release notes are provided exclusively through GitHub Releases.
+The app does not check for updates, display update notices, open an update page,
+or download/install updates. Visit GitHub Releases yourself to read what changed,
+requirements, known limitations, and installation instructions for each version.
+
+To update, download the Windows x64 setup executable, finish your translation
+session, close Kotoba and its overlay, and run the installer yourself. For a
+portable installation, replace the executable while Kotoba is closed.
 
 ## First launch
 
-1. Start the app and enter the URL of your running translation API in session settings.
-2. Enter that API's `KOTOBA_API_TOKEN`. **Do not enter your OpenAI key in the desktop app.**
-3. Select the game's screen/window and mark its Japanese dialogue area.
-4. Choose horizontal or vertical Japanese OCR and start capture.
-5. Open the always-on-top translation overlay. Use windowed or borderless-windowed game mode; exclusive fullscreen may obscure external overlays.
+1. Start the app. **On-device Japanese-to-English translation is the default.**
+2. While connected to the internet, choose **Prepare local model** in Session setup and wait until it is ready. Allow a few hundred MB of free disk space for setup; local inference also needs free memory and CPU time.
+3. Select the game's screen/window and mark its Japanese dialogue area. Horizontal and vertical Japanese OCR data are included in the application.
+4. Start capture and open the always-on-top overlay. Windowed or borderless-windowed game mode is recommended; exclusive fullscreen may obscure external overlays.
+5. To use cloud translation instead, choose **Cloud (OpenAI)** and accept the privacy prompt. The developer's OpenAI key stays on the server. Players do not enter an API key or service token. This choice lasts for the current session only.
 
-OCR runs locally. Recognized text is sent to the configured translation API and OpenAI for translation; captured screenshots are not sent by this app. Translation requests can incur OpenAI charges.
+In on-device mode, OCR and translation run locally; dialogue and captured frames are not uploaded. Ordinary local translation is cache-only and never silently downloads model assets or falls back to cloud. After preparation, the desktop app can translate without an internet connection, including after restarting. Clearing application/site data or losing cached storage requires another download. The browser preview itself still needs its web page loaded; the installed desktop app bundles that page and its executable runtimes.
+
+Cloud mode sends recognized dialogue, not captured frames, to the configured service and OpenAI. The service is free for players within its shared allowance, but incurs charges for the developer. Returning offline selects on-device mode. No automatic cloud fallback occurs.
+
+The preconfigured desktop cloud service is `https://Mhfzz-game-translator.replit.app`. Advanced users may specify another HTTPS service URL. The service must remain published with cloud translation enabled and a valid server-side provider key.
 
 ## Translation API
 
@@ -28,9 +39,30 @@ Set these values securely on the API host:
 
 - `OPENAI_API_KEY`: your OpenAI key.
 - `KOTOBA_API_TOKEN`: a separate random service token of at least 32 bytes.
+- `KOTOBA_PUBLIC_CLOUD_ENABLED`: set to `true` to enable the optional developer-funded endpoint. Any other value disables it.
+- `KOTOBA_CLOUD_DAILY_LIMIT`: optional shared daily request allowance; defaults to 100 and is capped at 1000. Reservations are counted even when a provider request fails.
+- `DATABASE_URL`: PostgreSQL connection for the durable cloud-usage counter. Apply the development schema through Publish before enabling the feature in production.
 - `PORT`: the host's HTTP port.
 
-The API requires bearer authentication, validates request payloads, limits request size and rate, and does not expose provider errors or keys. Desktop service tokens stay in memory and must be entered again after restarting.
+The original `/api/translate` endpoint remains bearer-authenticated. The separate `/api/cloud/translate` endpoint requires the client's consent header but no player credential; the header records intent, not authentication. It validates dialogue length, limits requests to five per minute per network address and two concurrent provider calls per server process, and reserves requests atomically against a database-backed UTC daily allowance shared across restarts and server instances. Missing quota storage fails closed. Provider retries are disabled, requests time out after 25 seconds, and output tokens are bounded. Only aggregate daily counts are stored for quotas, never dialogue or player identifiers. Provider errors and keys are not exposed.
+
+The daily allowance limits request counts, not exact dollar spending. Use a dedicated OpenAI project/key with appropriate provider-side limits as an additional safeguard. Configure proxy trust carefully for the hosting network; never blindly trust client-supplied forwarded IP headers.
+
+Translation attempts, including failed authentication, share a 60-per-minute
+limit per client IP (IPv6 addresses are grouped by subnet). This is an
+in-memory, per-server-instance limit, not a deployment-wide quota.
+
+The API trusts exactly one reverse-proxy hop. The public listener must remain
+behind a proxy that appends or overwrites `X-Forwarded-For` with the real client
+address; do not expose it directly to the internet with this setting. If changing
+hosts or proxy topology, review this trust boundary before deployment.
+
+CORS permits only the packaged Tauri origins (`http://tauri.localhost` and
+`tauri://localhost`), plus `http://localhost:1420` in development. The hosted web
+overlay should use its same-origin API. Other browser origins receive no CORS
+permission; CORS is not authentication. The legacy `/api/translate` endpoint
+requires its service token; the separate `/api/cloud/translate` endpoint uses
+explicit player consent and the developer-funded shared allowance instead.
 
 For local API development:
 
@@ -45,7 +77,8 @@ See [Windows build instructions](artifacts/kotoba-overlay/WINDOWS.md).
 
 - Push changes to `main` to build installer/portable artifacts using `windows-latest`.
 - Run **Build Kotoba Overlay for Windows x64** manually from the repository's Actions page for an on-demand build.
-- To publish an update, update the version in Tauri configuration and Cargo metadata, then push a matching `vX.Y.Z` tag. A successful build creates a GitHub Release with both executables.
+- To publish an update, update the version in Tauri configuration and Cargo metadata, write `artifacts/kotoba-overlay/releases/vX.Y.Z.md`, then push a matching `vX.Y.Z` tag. A successful build creates a GitHub Release with both executables, those release-specific notes, and generated GitHub change history.
+- Each release's notes must clearly describe **Changes**, **Windows downloads**, **Updating**, and **Requirements and known limitations**. The Windows workflow rejects missing/unfinished notes and mismatched Tauri/Cargo versions or release tags. Do not reuse an old version's notes for a new release.
 - Never commit API keys, service tokens, `.env` files, or signed credentials.
 
 ## License
@@ -53,6 +86,6 @@ See [Windows build instructions](artifacts/kotoba-overlay/WINDOWS.md).
 The project's original source code is available under the [MIT License](LICENSE).
 Copyright notices and the license text must be retained when redistributing it.
 
-Third-party libraries and OCR components retain their respective licenses.
+Third-party libraries, translation models and OCR components retain their respective licenses; see [Third-party notices](THIRD_PARTY_NOTICES.md).
 This license does not grant rights to Monster Hunter Frontier Z, game assets,
 trademarks, or third-party services.

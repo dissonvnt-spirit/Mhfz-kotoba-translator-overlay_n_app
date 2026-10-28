@@ -34,3 +34,24 @@ export const TranslateGameTextResponse = zod.object({
 })
 
 
+/**
+ * @summary Optional developer-funded translation after player consent
+ */
+export const TranslatePublicGameTextHeader = zod.object({
+  "X-Kotoba-Cloud-Consent": zod.enum(['yes'])
+})
+
+export const translatePublicGameTextBodyTextMax = 2000;
+
+
+
+export const TranslatePublicGameTextBody = zod.object({
+  "text": zod.string().min(1).max(translatePublicGameTextBodyTextMax)
+})
+
+export const TranslatePublicGameTextResponse = zod.object({
+  "sourceText": zod.string(),
+  "translatedText": zod.string()
+})
+
+

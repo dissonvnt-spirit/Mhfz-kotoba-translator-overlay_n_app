@@ -56,6 +56,40 @@ paths:
           description: Translation provider error
         "503":
           description: Translation provider is not configured
+  /cloud/translate:
+    post:
+      operationId: translatePublicGameText
+      tags: [translation]
+      summary: Optional developer-funded translation after player consent
+      security: []
+      parameters:
+        - in: header
+          name: X-Kotoba-Cloud-Consent
+          required: true
+          schema:
+            type: string
+            enum: ["yes"]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TranslationInput"
+      responses:
+        "200":
+          description: Translated game text
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranslationResult"
+        "400":
+          description: Missing consent or invalid dialogue
+        "429":
+          description: Free cloud allowance reached
+        "502":
+          description: No provider output
+        "503":
+          description: Cloud provider or quota storage unavailable
 components:
   securitySchemes:
     BearerAuth:

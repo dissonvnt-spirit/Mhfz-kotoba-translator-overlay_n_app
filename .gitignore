@@ -53,4 +53,5 @@ Thumbs.db
 **/src-tauri/target/
 **/src-tauri/gen/
 /artifacts/kotoba-overlay/public/ocr/
+/artifacts/kotoba-overlay/public/offline-runtime/
 /generated-artifacts/
