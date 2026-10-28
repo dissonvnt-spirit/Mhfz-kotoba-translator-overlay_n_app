@@ -93,7 +93,7 @@ test("packaged desktop origins can preflight and send authenticated requests", a
     assert.equal(preflight.status, 204);
     assert.equal(preflight.headers.get("access-control-allow-origin"), origin);
     assert.equal(preflight.headers.get("access-control-allow-credentials"), null);
-    assert.equal(preflight.headers.get("access-control-allow-headers"), "Authorization,Content-Type");
+    assert.equal(preflight.headers.get("access-control-allow-headers"), "Authorization,Content-Type,X-Kotoba-Cloud-Consent");
     assert.ok(preflight.headers.get("vary").includes("Origin"));
     const response = await translate("192.0.2.8", {
       origin,
@@ -101,6 +101,23 @@ test("packaged desktop origins can preflight and send authenticated requests", a
     });
     assert.equal(response.status, 400);
     assert.equal(response.headers.get("access-control-allow-origin"), origin);
+  }
+});
+
+test("packaged desktop origins can preflight the explicit cloud consent header", async () => {
+  for (const origin of ["http://tauri.localhost", "tauri://localhost"]) {
+    const response = await fetch(`${baseUrl}/api/cloud/translate`, {
+      method: "OPTIONS",
+      headers: {
+        origin,
+        "access-control-request-method": "POST",
+        "access-control-request-headers": "content-type,x-kotoba-cloud-consent",
+      },
+    });
+    await response.arrayBuffer();
+    assert.equal(response.status, 204);
+    assert.equal(response.headers.get("access-control-allow-origin"), origin);
+    assert.ok(response.headers.get("access-control-allow-headers").toLowerCase().split(",").includes("x-kotoba-cloud-consent"));
   }
 });
 
