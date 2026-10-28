@@ -785,6 +785,7 @@ function Router() {
     <RoutedErrorBoundary>
       <Switch>
         <Route path="/" component={Home} />
+        <Route path="/index.html" component={Home} />
         <Route component={NotFound} />
       </Switch>
     </RoutedErrorBoundary>
