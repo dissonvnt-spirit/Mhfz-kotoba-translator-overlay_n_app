@@ -52,3 +52,5 @@ Thumbs.db
 !.env.example
 **/src-tauri/target/
 **/src-tauri/gen/
+/artifacts/kotoba-overlay/public/ocr/
+/generated-artifacts/

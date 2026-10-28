@@ -257,6 +257,9 @@ function Home() {
       }, { once: true });
       setOcrStatus('Loading Japanese OCR…');
       const worker = await createWorker(ocrOrientation === 'vertical' ? 'jpn_vert' : 'jpn', undefined, {
+        workerPath: new URL(`${import.meta.env.BASE_URL}ocr/worker.min.js`, window.location.href).href,
+        corePath: new URL(`${import.meta.env.BASE_URL}ocr/`, window.location.href).href,
+        workerBlobURL: false,
         logger: ({ status, progress }) => {
           setOcrStatus(status.replaceAll('_', ' '));
           setOcrProgress(Math.round(progress * 100));
