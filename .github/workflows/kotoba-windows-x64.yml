@@ -61,7 +61,17 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Verify release notes and GitHub-only update policy
-        run: pnpm --filter @workspace/kotoba-overlay run test:release-notes
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $output = & pnpm --filter @workspace/kotoba-overlay run test:release-notes 2>&1
+          $testExit = $LASTEXITCODE
+          $output | Write-Output
+          if ($testExit -ne 0) {
+            $details = ($output | Out-String).Replace("%", "%25").Replace("`r", "%0D").Replace("`n", "%0A")
+            Write-Output "::error title=Release notes checks::$details"
+            exit $testExit
+          }
 
       - name: Build Windows installer
         shell: pwsh

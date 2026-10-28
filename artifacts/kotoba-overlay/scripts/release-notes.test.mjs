@@ -3,7 +3,9 @@ import { readFile, readdir } from 'node:fs/promises';
 import { test } from 'node:test';
 
 const root = new URL('../', import.meta.url);
-const read = (path) => readFile(new URL(path, root), 'utf8');
+// Git on Windows may check text out with CRLF. Content checks must not depend
+// on the host's checkout newline convention.
+const read = async (path) => (await readFile(new URL(path, root), 'utf8')).replace(/\r\n/g, '\n');
 
 test('the installed version has substantive release-specific notes', async () => {
   const { version } = JSON.parse(await read('src-tauri/tauri.conf.json'));
