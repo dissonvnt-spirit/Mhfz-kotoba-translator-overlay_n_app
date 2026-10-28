@@ -7,6 +7,10 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import { setBaseUrl, useTranslatePublicGameText } from '@workspace/api-client-react';
 import { OfflineTranslator } from '@/lib/offline-translation';
+import { offlineFailureMessage } from '@/lib/offline-errors';
+import { DialogueBackups } from '@/components/dialogue-backups';
+import { OverlayWindow } from '@/components/overlay-window';
+import { mergeDialogue } from '@/lib/dialogue-backup';
 import { TranslationOptions, type TranslationMode } from '@/components/translation-options';
 import { isTauri } from '@tauri-apps/api/core';
 import { useForm } from 'react-hook-form';
@@ -14,7 +18,7 @@ import { createWorker, type Worker } from 'tesseract.js';
 import {
   ArrowDown, ArrowUpRight, Captions, Check, ChevronDown, CircleHelp, Copy,
   Gamepad2, Languages, LoaderCircle, Monitor, Pause, Play, Radio, ScanText,
-  Settings2, ShieldCheck, Square, Trash2, Volume2, X,
+  Settings2, ShieldCheck, Square, Trash2, Volume2,
 } from 'lucide-react';
 import {
   Route,
@@ -32,7 +36,7 @@ const STORAGE_KEY = 'kotoba-overlay-lines';
 const API_BASE_KEY = 'kotoba-translation-api-base';
 const OVERLAY_CHANNEL = 'kotoba-overlay-sync';
 const JAPANESE_TEXT = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/;
-const MAX_SAVED_LINES = 50;
+const MAX_SAVED_LINES = 500;
 const DEFAULT_CLOUD_URL = 'https://Mhfzz-game-translator.replit.app';
 
 function Home() {
@@ -62,6 +66,8 @@ function Home() {
   const [lines, setLines] = useState<DetectedLine[]>(() => {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') as DetectedLine[]; } catch { return []; }
   });
+  const linesRef = useRef(lines);
+  linesRef.current = lines;
   const [captureError, setCaptureError] = useState('');
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -83,11 +89,19 @@ function Home() {
   const translatingRef = useRef(false);
   const recentTextRef = useRef<string[]>([]);
   const overlayChannelRef = useRef<BroadcastChannel | null>(null);
+  const openingOverlayRef = useRef(false);
   selectingRegionRef.current = selectingRegion;
   ocrRegionRef.current = ocrRegion;
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(lines));
+    // The overlay is a read-only consumer; never overwrite the main journal
+    // with a stale snapshot while a new overlay is opening.
+    if (isOverlay) return;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(lines));
+    } catch {
+      setTranslationError('The journal could not be saved on this device. Export a backup now before closing the app or clearing any data.');
+    }
     if (!isOverlay) {
       overlayChannelRef.current?.postMessage({ type: 'sync-lines', lines });
     }
@@ -232,9 +246,9 @@ function Home() {
       localTranslator.current ??= new OfflineTranslator();
       await localTranslator.current.prepare(setOfflineStatus);
       recentTextRef.current = [];
-      setOfflineStatus('Local model ready. Translation and Japanese OCR can now run offline on this device.');
-    } catch {
-      setOfflineStatus('Local setup failed. Check your connection, free disk space and memory, then retry. Downloads already saved are reused.');
+      setOfflineStatus('Local model ready. Japanese-to-English translation self-test passed on this device.');
+    } catch (error) {
+      setOfflineStatus(offlineFailureMessage(error));
     } finally {
       setOfflineBusy(false);
     }
@@ -242,6 +256,10 @@ function Home() {
 
   const translateText = async (text: string, clearDraft = false): Promise<boolean> => {
     if (!text || translatingRef.current || offlineBusy) return false;
+    if (linesRef.current.length >= MAX_SAVED_LINES) {
+      setTranslationError('Journal full (500 lines). Export a backup, then clear the journal before translating more. Existing dialogue has not been removed.');
+      return false;
+    }
     translatingRef.current = true;
     setTranslationBusy(true);
     setTranslationError('');
@@ -255,13 +273,13 @@ function Home() {
       } else {
         result = await translate.mutateAsync({ data: { text } });
       }
-      setLines((current) => [{ ...result, timestamp: Date.now() }, ...current].slice(0, MAX_SAVED_LINES));
+      setLines((current) => [{ ...result, timestamp: Date.now() }, ...current]);
       if (clearDraft) manualForm.reset({ text: '' });
       return true;
     } catch (error) {
       const status = (error as { status?: number } | null)?.status;
       if (modeRef.current === 'offline' || !navigator.onLine) {
-        setTranslationError('Local translation could not run. Prepare the local model while online first. If it was downloaded, check free disk space and memory and retry. No dialogue was sent to the cloud.');
+        setTranslationError(offlineFailureMessage(error));
       } else if (status === 429) {
         setTranslationError('Free cloud allowance reached. Switch to offline translation or try again later.');
       } else if (status === 503) {
@@ -439,7 +457,7 @@ function Home() {
         return;
       }
     } else {
-      setBaseUrl(null);
+      setBaseUrl(isDesktop ? DEFAULT_CLOUD_URL : null);
     }
     localStorage.setItem(API_BASE_KEY, value);
     apiForm.reset({ url: value });
@@ -452,6 +470,8 @@ function Home() {
       window.open(`${window.location.pathname}?overlay=1`, '_blank', 'noopener,noreferrer');
       return;
     }
+    if (openingOverlayRef.current) return;
+    openingOverlayRef.current = true;
     setCaptureError('');
     try {
       const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
@@ -460,6 +480,7 @@ function Home() {
       if (existing) {
         await existing.show();
         await existing.setFocus();
+        openingOverlayRef.current = false;
         return;
       }
       const overlay = new WebviewWindow(label, {
@@ -477,19 +498,15 @@ function Home() {
         skipTaskbar: true,
       });
       void overlay.once('tauri://error', (event) => {
+        openingOverlayRef.current = false;
         setCaptureError(`The Windows overlay could not open: ${String(event.payload)}`);
+      });
+      void overlay.once('tauri://created', () => {
+        openingOverlayRef.current = false;
       });
     } catch {
       setCaptureError('The Windows overlay could not open. Restart the desktop app and try again.');
-    }
-  };
-
-  const closeOverlay = async () => {
-    if (isDesktop) {
-      const { getCurrentWindow } = await import('@tauri-apps/api/window');
-      await getCurrentWindow().close();
-    } else {
-      window.close();
+      openingOverlayRef.current = false;
     }
   };
 
@@ -506,28 +523,7 @@ function Home() {
 
   if (isOverlay) {
     return (
-      <main className="min-h-[100dvh] w-full p-3 sm:p-6" data-testid="overlay-view">
-        <div className="hunt-frame mx-auto max-w-3xl overflow-hidden">
-          <div className="flex items-center justify-between gap-3 border-b border-[hsl(var(--bronze)/.35)] px-4 py-2.5">
-            <div className="flex min-w-0 items-center gap-2.5">
-              <Crest size={26} />
-              <span className="truncate font-display text-[13px] font-bold tracking-[.14em] text-[hsl(var(--parchment))]">MHFZ-Z <span className="text-[hsl(var(--bronze-hi))]">Translator Overlay</span></span>
-            </div>
-            <div className="flex shrink-0 items-center gap-3">
-              <span className="hidden items-center gap-2 font-mono-ui text-[10px] uppercase tracking-[.16em] text-[hsl(var(--parchment)/.65)] sm:flex"><span className="live-pulse h-1.5 w-1.5 rotate-45 bg-[hsl(var(--moss))]" />Live</span>
-              <button onClick={() => void closeOverlay()} className="icon-btn" aria-label="Close overlay" data-testid="button-close-overlay"><X size={15} /></button>
-            </div>
-          </div>
-          {latest ? (
-            <div className="space-y-2.5 px-5 py-4 sm:px-6 sm:py-5" data-testid="overlay-latest-translation">
-              <p className="font-jp text-base leading-relaxed text-[hsl(var(--parchment)/.72)] sm:text-lg" lang="ja">{latest.sourceText}</p>
-              <p className="border-l-2 border-[hsl(var(--ember))] pl-3 font-display text-lg font-semibold leading-relaxed text-[hsl(var(--parchment))] sm:text-xl">{latest.translatedText}</p>
-            </div>
-          ) : (
-            <div className="flex items-center gap-3 px-5 py-6 text-sm text-[hsl(var(--parchment)/.7)]" data-testid="overlay-empty-state"><Captions size={16} className="shrink-0 text-[hsl(var(--bronze-hi))]" />Japanese dialogue will appear here once the hunt begins.</div>
-          )}
-        </div>
-      </main>
+      <OverlayWindow desktop={isDesktop} crest={<Crest size={26} />} latest={latest} />
     );
   }
 
@@ -663,6 +659,13 @@ function Home() {
                 <button onClick={() => setLines([])} disabled={!lines.length} className="btn-chip btn-danger" data-testid="button-clear-transcript"><Trash2 size={12} /> Clear</button>
               </div>
             </div>
+            <DialogueBackups lines={lines} onRestore={(incoming) => {
+              if (translatingRef.current) throw new Error('Wait for the current translation to finish before merging a backup.');
+              const merged = mergeDialogue(linesRef.current, incoming);
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+              linesRef.current = merged;
+              setLines(merged);
+            }} />
             <div ref={transcriptRef} className="max-h-[440px] min-h-[260px] overflow-y-auto scroll-smooth">
               {translationBusy && (
                 <div className="border-b border-[hsl(var(--bronze)/.18)] px-5 py-5" data-testid="status-translating">

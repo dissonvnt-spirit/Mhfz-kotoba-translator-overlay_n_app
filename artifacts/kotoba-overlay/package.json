@@ -10,7 +10,8 @@
     "build": "node scripts/prepare-ocr.cjs && node scripts/prepare-offline.cjs && vite build --config vite.config.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:release-notes": "node --test scripts/release-notes.test.mjs"
+    "test:release-notes": "node --test scripts/release-notes.test.mjs",
+    "test:offline": "node --test scripts/offline-translation.test.mjs"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",

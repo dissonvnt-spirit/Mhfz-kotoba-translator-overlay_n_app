@@ -10,7 +10,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 New-Item -ItemType Directory -Force -Path $DiagnosticsDirectory | Out-Null
 $report = [ordered]@{
-    scope = 'Installed Windows app and overlay startup only; no MHFZ, capture, OCR, or translation-service verification.'
+    scope = 'Installed Windows app, first-time model preparation and synthetic local Japanese-to-English self-test, overlay startup and mouse move/resize controls; no MHFZ, capture, OCR, cloud, restart or upgrade verification.'
     status = 'running'
     stage = 'initialization'
     checks = @()
@@ -47,6 +47,7 @@ function Wait-For([string]$Description, [scriptblock]$Probe, [int]$Seconds = 45)
 
 try {
     if ($env:OS -ne 'Windows_NT') { throw 'This smoke check requires Windows.' }
+    . (Join-Path $PSScriptRoot 'offline-diagnostics.ps1')
     # PowerShell accepts mixed separators; NSIS parses /D itself and requires a
     # native Windows path. Do not pass a POSIX-style suffix to the installer.
     $InstallDirectory = [System.IO.Path]::GetFullPath($InstallDirectory).Replace('/', '\')
@@ -58,6 +59,13 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 public static class KotobaSmokeWindows {
+    [StructLayout(LayoutKind.Sequential)]
+    public struct Rect { public int Left, Top, Right, Bottom; }
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out Rect rect);
+    [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr hwnd);
+    [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
+    [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
     public delegate bool EnumProc(IntPtr hwnd, IntPtr data);
     [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc callback, IntPtr data);
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
@@ -87,6 +95,8 @@ public static class KotobaSmokeWindows {
     }
 }
 '@
+    # Match UI Automation's physical screen coordinates on scaled displays.
+    $null = [KotobaSmokeWindows]::SetThreadDpiAwarenessContext([IntPtr](-4))
 
     function Get-AppWindows([string]$Title) {
         [KotobaSmokeWindows]::Find($script:app.Id, $Title)
@@ -125,6 +135,29 @@ public static class KotobaSmokeWindows {
         }
     }
 
+    function Get-Bounds([IntPtr]$Handle) {
+        $rect = New-Object KotobaSmokeWindows+Rect
+        if (-not [KotobaSmokeWindows]::GetWindowRect($Handle, [ref]$rect)) { throw 'Could not read native overlay bounds.' }
+        [ordered]@{ x = $rect.Left; y = $rect.Top; width = $rect.Right - $rect.Left; height = $rect.Bottom - $rect.Top }
+    }
+
+    function Drag-Mouse([int]$X, [int]$Y, [int]$Dx, [int]$Dy) {
+        if (-not [KotobaSmokeWindows]::SetCursorPos($X, $Y)) { throw 'Could not position mouse for overlay control check.' }
+        [KotobaSmokeWindows]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
+        try {
+            # Give the WebView time to dispatch mousedown and enter native move/resize.
+            Start-Sleep -Milliseconds 400
+            for ($step = 1; $step -le 12; $step++) {
+                if (-not [KotobaSmokeWindows]::SetCursorPos(($X + $Dx * $step / 12), ($Y + $Dy * $step / 12))) {
+                    throw 'Mouse drag failed.'
+                }
+                Start-Sleep -Milliseconds 35
+            }
+        } finally {
+            [KotobaSmokeWindows]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
+        }
+    }
+
     Set-Stage 'silent-install'
     $installers = @(Get-ChildItem -LiteralPath $BundleDirectory -Filter '*.exe' -File)
     if ($installers.Count -ne 1) { throw 'Expected exactly one NSIS installer.' }
@@ -153,6 +186,36 @@ public static class KotobaSmokeWindows {
     Assert-Alive $main
     $report.checks += 'main-window-visible-and-responsive-10s'
 
+    Set-Stage 'initial-local-model-preparation'
+    # The hosted runner has a fresh WebView profile. Exercise the actual release
+    # worker, bundled WASM, CSP and persistent cache through the installed UI.
+    # Preparation runs a fixed Japanese sentence through local inference before
+    # emitting this exact success message. Never select or consent to cloud.
+    Invoke-Control $main 'Prepare local model'
+    $readyMessage = 'Local model ready. Japanese-to-English translation self-test passed on this device.'
+    $null = Wait-For 'local model download and Japanese-to-English self-test' {
+        $root = [System.Windows.Automation.AutomationElement]::FromHandle($main)
+        $nodes = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants,
+            [System.Windows.Automation.Condition]::TrueCondition)
+        foreach ($node in $nodes) {
+            # Only record allowlisted fields from the authored error prefix.
+            $name = $node.Current.Name
+            $diagnostic = ConvertFrom-LocalModelDiagnostic $name
+            if ($null -ne $diagnostic) {
+                $report.localModelErrorCode = $diagnostic['code']
+                if ($diagnostic.Contains('stage')) { $report.localModelStage = $diagnostic['stage'] }
+                if ($diagnostic.Contains('lastFile')) { $report.localModelLastFile = $diagnostic['lastFile'] }
+                Save-Report
+                $details = ($diagnostic.Values -join '; ')
+                throw "Local preparation failed with [$details]."
+            }
+            if ($name -eq $readyMessage) { return $true }
+        }
+        return $false
+    } 600
+    $report.checks += 'initial-local-model-preparation-and-japanese-english-inference'
+    Save-Report
+
     Set-Stage 'overlay-open'
     # Use a real accessible control: no injected JS, devtools, remote debugging, or test-only app mode.
     Invoke-Control $main 'Overlay window'
@@ -166,6 +229,32 @@ public static class KotobaSmokeWindows {
     }
     Assert-Alive $overlay
     $report.checks += 'overlay-rendered-topmost-and-responsive-10s'
+
+    Set-Stage 'overlay-mouse-move'
+    $before = Get-Bounds $overlay
+    $report.overlayInitialBounds = $before
+    $report.overlayDpi = [KotobaSmokeWindows]::GetDpiForWindow($overlay)
+    $report.overlayScalingPercent = [Math]::Round($report.overlayDpi / 96.0 * 100)
+    $move = Wait-For 'overlay drag handle' { Get-Control $overlay 'Move overlay' $true }
+    $bounds = $move.Current.BoundingRectangle
+    Drag-Mouse ([int]($bounds.Left + $bounds.Width / 2)) ([int]($bounds.Top + $bounds.Height / 2)) -70 -40
+    $null = Wait-For 'overlay to move using its drag handle' {
+        $after = Get-Bounds $overlay
+        [Math]::Abs($after.x - $before.x) -ge 30 -and [Math]::Abs($after.y - $before.y) -ge 15
+    }
+    $report.overlayMovedBounds = Get-Bounds $overlay
+    $report.checks += 'overlay-moves-with-mouse'
+
+    Set-Stage 'overlay-mouse-resize'
+    $before = Get-Bounds $overlay
+    Drag-Mouse ($before.x + $before.width - 8) ($before.y + $before.height - 8) 80 60
+    $null = Wait-For 'overlay to grow using its resize grip' {
+        $after = Get-Bounds $overlay
+        $after.width -ge ($before.width + 30) -and $after.height -ge ($before.height + 20)
+    }
+    $report.overlayResizedBounds = Get-Bounds $overlay
+    Assert-Alive $main 2
+    $report.checks += 'overlay-resizes-with-mouse'
 
     Set-Stage 'overlay-reuse'
     Invoke-Control $main 'Overlay window'

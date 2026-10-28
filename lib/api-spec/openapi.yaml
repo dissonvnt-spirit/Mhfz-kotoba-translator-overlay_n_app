@@ -13,6 +13,62 @@ tags:
   - name: translation
     description: Game text translation operations
 paths:
+  /dialogue-archives:
+    post:
+      operationId: createDialogueArchive
+      summary: Store a private compiled dialogue archive after explicit consent
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DialogueArchiveInput"
+      responses:
+        "201":
+          description: Archive saved; keep the recovery code private
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DialogueArchiveReceipt"
+        "400":
+          description: Invalid dialogue or missing consent
+        "413":
+          description: Archive exceeds one MiB
+        "429":
+          description: Upload rate limit exceeded
+        "503":
+          description: Archive storage unavailable
+    get:
+      operationId: retrieveDialogueArchive
+      summary: Retrieve an archive using its private recovery code
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Compiled dialogue archive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DialogueArchive"
+        "401":
+          description: Missing or malformed recovery code
+        "404":
+          description: Archive not found
+        "503":
+          description: Archive storage unavailable
+    delete:
+      operationId: deleteDialogueArchive
+      summary: Permanently delete a server archive using its recovery code
+      security:
+        - BearerAuth: []
+      responses:
+        "204":
+          description: Archive deleted or already absent
+        "401":
+          description: Missing or malformed recovery code
+        "503":
+          description: Archive storage unavailable
   /healthz:
     get:
       operationId: healthCheck
@@ -96,6 +152,41 @@ components:
       type: http
       scheme: bearer
   schemas:
+    DialogueLine:
+      type: object
+      additionalProperties: false
+      required: [sourceText, translatedText, timestamp]
+      properties:
+        sourceText: { type: string, minLength: 1, maxLength: 4000 }
+        translatedText: { type: string, minLength: 1, maxLength: 4000 }
+        timestamp: { type: integer, minimum: 0, maximum: 8640000000000000 }
+    DialogueArchiveInput:
+      type: object
+      additionalProperties: false
+      required: [title, lines, consent]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 120 }
+        consent: { type: boolean, enum: [true] }
+        lines:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items: { $ref: "#/components/schemas/DialogueLine" }
+    DialogueArchiveReceipt:
+      type: object
+      required: [recoveryCode, lineCount]
+      properties:
+        recoveryCode: { type: string }
+        lineCount: { type: integer }
+    DialogueArchive:
+      type: object
+      required: [title, lines, createdAt]
+      properties:
+        title: { type: string }
+        createdAt: { type: string }
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/DialogueLine" }
     HealthStatus:
       type: object
       properties:

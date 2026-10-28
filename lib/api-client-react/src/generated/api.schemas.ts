@@ -5,6 +5,49 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export interface DialogueLine {
+  /**
+     * @minLength 1
+     * @maxLength 4000
+     */
+  sourceText: string;
+  /**
+     * @minLength 1
+     * @maxLength 4000
+     */
+  translatedText: string;
+  /**
+     * @minimum 0
+     * @maximum 8640000000000000
+     */
+  timestamp: number;
+}
+
+export interface DialogueArchiveInput {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  title: string;
+  consent: true;
+  /**
+     * @minItems 1
+     * @maxItems 500
+     */
+  lines: DialogueLine[];
+}
+
+export interface DialogueArchiveReceipt {
+  recoveryCode: string;
+  lineCount: number;
+}
+
+export interface DialogueArchive {
+  title: string;
+  createdAt: string;
+  lines: DialogueLine[];
+}
+
 export interface HealthStatus {
   status: string;
 }
