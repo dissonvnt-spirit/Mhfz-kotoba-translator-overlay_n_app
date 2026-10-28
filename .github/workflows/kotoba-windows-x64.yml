@@ -39,6 +39,10 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: artifacts/kotoba-overlay/src-tauri -> target
+
       - name: Install NSIS
         run: choco install nsis --yes --no-progress
 
