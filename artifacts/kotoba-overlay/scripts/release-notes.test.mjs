@@ -45,6 +45,10 @@ test('native release versions match and upgrade identity remains stable', async 
   const smoke = await read('scripts/windows-smoke.ps1');
   assert.ok(smoke.includes("Get-AppWindows 'MHFZ-Z Translator Overlay'"));
   assert.ok(smoke.includes("Get-AppWindows 'MHFZ-Z Translator Overlay - Dialogue'"));
+  const emptyState = 'Japanese dialogue will appear here once the hunt begins.';
+  assert.ok(app.includes(emptyState), 'Smoke empty-state text must match the rendered companion window');
+  assert.equal(smoke.split(`Get-Control $overlay '${emptyState}'`).length - 1, 1);
+  assert.equal(smoke.split(`Get-Control $reopened '${emptyState}'`).length - 1, 1);
 });
 
 test('GitHub releases publish version-specific notes plus generated change history', async () => {

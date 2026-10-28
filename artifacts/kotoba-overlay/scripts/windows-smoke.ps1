@@ -159,7 +159,7 @@ public static class KotobaSmokeWindows {
     $overlay = Wait-For 'visible translation overlay' { Get-AppWindows 'MHFZ-Z Translator Overlay - Dialogue' }
     $overlay = [IntPtr]$overlay
     $null = Wait-For 'rendered overlay empty state' {
-        Get-Control $overlay 'Japanese dialogue will appear here.'
+        Get-Control $overlay 'Japanese dialogue will appear here once the hunt begins.'
     }
     if (([KotobaSmokeWindows]::GetWindowLong($overlay, -20) -band 0x8) -eq 0) {
         throw 'Translation overlay is not marked always-on-top (WS_EX_TOPMOST).'
@@ -180,7 +180,7 @@ public static class KotobaSmokeWindows {
     Invoke-Control $main 'Overlay window'
     $reopened = Wait-For 'overlay to reopen' { Get-AppWindows 'MHFZ-Z Translator Overlay - Dialogue' }
     $reopened = [IntPtr]$reopened
-    $null = Wait-For 'reopened overlay content' { Get-Control $reopened 'Japanese dialogue will appear here.' }
+    $null = Wait-For 'reopened overlay content' { Get-Control $reopened 'Japanese dialogue will appear here once the hunt begins.' }
     Assert-Alive $reopened 2
     Invoke-Control $reopened 'Close overlay'
     $null = Wait-For 'reopened overlay to close' { -not [KotobaSmokeWindows]::IsWindow($reopened) }
