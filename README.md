@@ -47,3 +47,12 @@ See [Windows build instructions](artifacts/kotoba-overlay/WINDOWS.md).
 - Run **Build Kotoba Overlay for Windows x64** manually from the repository's Actions page for an on-demand build.
 - To publish an update, update the version in Tauri configuration and Cargo metadata, then push a matching `vX.Y.Z` tag. A successful build creates a GitHub Release with both executables.
 - Never commit API keys, service tokens, `.env` files, or signed credentials.
+
+## License
+
+The project's original source code is available under the [MIT License](LICENSE).
+Copyright notices and the license text must be retained when redistributing it.
+
+Third-party libraries and OCR components retain their respective licenses.
+This license does not grant rights to Monster Hunter Frontier Z, game assets,
+trademarks, or third-party services.
