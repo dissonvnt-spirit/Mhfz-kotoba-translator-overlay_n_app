@@ -47,6 +47,9 @@ function Wait-For([string]$Description, [scriptblock]$Probe, [int]$Seconds = 45)
 
 try {
     if ($env:OS -ne 'Windows_NT') { throw 'This smoke check requires Windows.' }
+    # PowerShell accepts mixed separators; NSIS parses /D itself and requires a
+    # native Windows path. Do not pass a POSIX-style suffix to the installer.
+    $InstallDirectory = [System.IO.Path]::GetFullPath($InstallDirectory).Replace('/', '\')
     Add-Type -AssemblyName UIAutomationClient
     Add-Type -AssemblyName UIAutomationTypes
     Add-Type -TypeDefinition @'
@@ -137,6 +140,7 @@ public static class KotobaSmokeWindows {
     $report.installerExitCode = $installerProcess.ExitCode
     if ($installerProcess.ExitCode -ne 0) { throw "NSIS installer failed (exit code $($installerProcess.ExitCode))." }
     $exe = Join-Path $InstallDirectory 'kotoba-overlay.exe'
+    $report.installDirectoryExists = Test-Path -LiteralPath $InstallDirectory -PathType Container
     if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Installer succeeded but the installed executable is missing.' }
     $report.checks += 'silent-install'
 
@@ -219,6 +223,13 @@ finally {
         Stop-Process -Id $installerProcess.Id -Force -ErrorAction SilentlyContinue
     }
     Save-Report
+    if ($report.status -eq 'failed') {
+        # Whitelisted stage/error only; make failures readable without requiring
+        # credentials to download an Actions artifact or exposing the UI tree.
+        $details = "Stage: $($report.stage). $($report.error)"
+        $details = $details.Replace("%", "%25").Replace("`r", "%0D").Replace("`n", "%0A")
+        Write-Output "::error title=Windows installed-app smoke::$details"
+    }
     if ($env:GITHUB_STEP_SUMMARY) {
         @"
 ## Windows installed-app smoke check: $($report.status)

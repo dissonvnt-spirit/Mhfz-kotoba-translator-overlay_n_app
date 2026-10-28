@@ -126,7 +126,7 @@ jobs:
           & powershell.exe -NoProfile -NonInteractive -STA -ExecutionPolicy Bypass `
             -File artifacts/kotoba-overlay/scripts/windows-smoke.ps1 `
             -BundleDirectory artifacts/kotoba-overlay/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis `
-            -InstallDirectory "$env:RUNNER_TEMP/Kotoba Smoke Install" `
+            -InstallDirectory "$env:RUNNER_TEMP\Kotoba Smoke Install" `
             -DiagnosticsDirectory "$env:RUNNER_TEMP/kotoba-smoke-diagnostics"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
