@@ -172,6 +172,12 @@ jobs:
         run: |
           set -euo pipefail
           cd release-assets
+          # GitHub normalizes spaces in release asset names. Rename before
+          # hashing so the manifest matches the names players download.
+          for file in *.exe; do
+            normalized="${file// /.}"
+            if [ "$file" != "$normalized" ]; then mv -- "$file" "$normalized"; fi
+          done
           sha256sum *.exe > SHA256SUMS.txt
           sha256sum --check SHA256SUMS.txt
           cd ..

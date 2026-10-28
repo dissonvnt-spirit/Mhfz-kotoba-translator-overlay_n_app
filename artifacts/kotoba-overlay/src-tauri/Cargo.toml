@@ -1,6 +1,6 @@
 [package]
 name = "kotoba-overlay"
-version = "0.2.1"
+version = "0.2.2"
 description = "Japanese-to-English game translation overlay"
 authors = ["Kotoba Overlay"]
 edition = "2021"

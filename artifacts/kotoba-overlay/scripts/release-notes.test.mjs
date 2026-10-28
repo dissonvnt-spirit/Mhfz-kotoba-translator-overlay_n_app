@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { test } from 'node:test';
+import { execFileSync } from 'node:child_process';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 
 const root = new URL('../', import.meta.url);
 // Git on Windows may check text out with CRLF. Content checks must not depend
@@ -42,4 +46,29 @@ test('application source has no GitHub update checks, notices, or release opener
   }
   await check('src');
   await check('src-tauri/src');
+});
+
+test('release asset names are normalized before checksums are generated', async () => {
+  const workflow = await read('../../.github/workflows/kotoba-windows-x64.yml');
+  const release = workflow.split('\n  release:\n')[1];
+  assert.ok(release.includes('normalized="${file// /.}"'));
+  assert.ok(release.indexOf('normalized="${file// /.}"') < release.indexOf('sha256sum *.exe > SHA256SUMS.txt'));
+  // Exercise the actual release shell block on hosts with bash and sha256sum.
+  // Windows runners execute the release job on Ubuntu, not PowerShell.
+  if (process.platform === 'win32') return;
+  const directory = await mkdtemp(path.join(tmpdir(), 'kotoba-checksums-'));
+  try {
+    await writeFile(path.join(directory, 'Kotoba Overlay_0.2.2_x64-setup.exe'), 'synthetic installer');
+    await writeFile(path.join(directory, 'kotoba-overlay.exe'), 'synthetic app');
+    const block = release.split('cd release-assets\n')[1].split('          cd ..')[0]
+      .split('\n').map((line) => line.replace(/^          /, '')).join('\n');
+    execFileSync('bash', ['-euo', 'pipefail', '-c', block], {
+      cwd: directory, env: { ...process.env, BASH_ENV: '' },
+    });
+    const manifest = await readFile(path.join(directory, 'SHA256SUMS.txt'), 'utf8');
+    assert.match(manifest, /Kotoba\.Overlay_0\.2\.2_x64-setup\.exe/);
+    assert.doesNotMatch(manifest, /Kotoba Overlay/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
