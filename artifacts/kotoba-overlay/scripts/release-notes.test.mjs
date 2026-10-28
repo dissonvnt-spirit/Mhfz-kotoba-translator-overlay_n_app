@@ -12,14 +12,39 @@ const root = new URL('../', import.meta.url);
 const read = async (path) => (await readFile(new URL(path, root), 'utf8')).replace(/\r\n/g, '\n');
 
 test('the installed version has substantive release-specific notes', async () => {
-  const { version } = JSON.parse(await read('src-tauri/tauri.conf.json'));
+  const { version, productName } = JSON.parse(await read('src-tauri/tauri.conf.json'));
   const notes = await read(`releases/v${version}.md`);
-  assert.ok(notes.startsWith(`# Kotoba Overlay v${version}\n`));
+  assert.equal(productName, 'MHFZ-Z Translator Overlay');
+  assert.ok(notes.startsWith(`# ${productName} v${version}\n`));
   for (const title of ['Changes', 'Windows downloads', 'Updating', 'Requirements and known limitations']) {
     const section = notes.split(`## ${title}\n`)[1]?.split('\n## ')[0].trim();
     assert.ok(section && section.length >= 30, `Missing or empty ${title} section`);
   }
   assert.doesNotMatch(notes, /\b(?:TODO|TBD|PLACEHOLDER)\b/i, 'Release notes must be finished before release');
+});
+
+test('historical release notes retain their original product name', async () => {
+  for (const version of ['0.1.1', '0.2.0', '0.2.1', '0.2.2', '0.2.3']) {
+    assert.ok((await read(`releases/v${version}.md`)).startsWith(`# Kotoba Overlay v${version}\n`));
+  }
+});
+
+test('native release versions match and upgrade identity remains stable', async () => {
+  const config = JSON.parse(await read('src-tauri/tauri.conf.json'));
+  const cargo = await read('src-tauri/Cargo.toml');
+  const lock = await read('src-tauri/Cargo.lock');
+  assert.equal(cargo.match(/^version = "([^"]+)"/m)?.[1], config.version);
+  assert.equal(lock.match(/\[\[package\]\]\nname = "kotoba-overlay"\nversion = "([^"]+)"/)?.[1], config.version);
+  assert.match(cargo, /^name = "kotoba-overlay"$/m);
+  assert.equal(config.identifier, 'com.kotoba.overlay');
+  assert.equal(config.app.windows[0].label, 'main');
+  assert.equal(config.app.windows[0].title, config.productName);
+  const app = await read('src/App.tsx');
+  assert.ok(app.includes("const label = 'translation-overlay'"));
+  assert.ok(app.includes("title: 'MHFZ-Z Translator Overlay - Dialogue'"));
+  const smoke = await read('scripts/windows-smoke.ps1');
+  assert.ok(smoke.includes("Get-AppWindows 'MHFZ-Z Translator Overlay'"));
+  assert.ok(smoke.includes("Get-AppWindows 'MHFZ-Z Translator Overlay - Dialogue'"));
 });
 
 test('GitHub releases publish version-specific notes plus generated change history', async () => {
@@ -58,7 +83,7 @@ test('release asset names are normalized before checksums are generated', async 
   if (process.platform === 'win32') return;
   const directory = await mkdtemp(path.join(tmpdir(), 'kotoba-checksums-'));
   try {
-    await writeFile(path.join(directory, 'Kotoba Overlay_0.2.2_x64-setup.exe'), 'synthetic installer');
+    await writeFile(path.join(directory, 'MHFZ-Z Translator Overlay_0.2.4_x64-setup.exe'), 'synthetic installer');
     await writeFile(path.join(directory, 'kotoba-overlay.exe'), 'synthetic app');
     const block = release.split('cd release-assets\n')[1].split('          cd ..')[0]
       .split('\n').map((line) => line.replace(/^          /, '')).join('\n');
@@ -66,8 +91,8 @@ test('release asset names are normalized before checksums are generated', async 
       cwd: directory, env: { ...process.env, BASH_ENV: '' },
     });
     const manifest = await readFile(path.join(directory, 'SHA256SUMS.txt'), 'utf8');
-    assert.match(manifest, /Kotoba\.Overlay_0\.2\.2_x64-setup\.exe/);
-    assert.doesNotMatch(manifest, /Kotoba Overlay/);
+    assert.match(manifest, /MHFZ-Z\.Translator\.Overlay_0\.2\.4_x64-setup\.exe/);
+    assert.doesNotMatch(manifest, /MHFZ-Z Translator Overlay/);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

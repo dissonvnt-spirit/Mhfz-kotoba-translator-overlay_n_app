@@ -227,7 +227,7 @@ function Home() {
   const prepareOffline = async () => {
     if (translatingRef.current || offlineBusy) return;
     setOfflineBusy(true);
-    setOfflineStatus('Preparing local translation. Keep this window open…');
+    setOfflineStatus('Preparing local translation. Keep this window open...');
     try {
       localTranslator.current ??= new OfflineTranslator();
       await localTranslator.current.prepare(setOfflineStatus);
@@ -289,7 +289,7 @@ function Home() {
     setSelectingRegion(false);
     setCaptureAspect(null);
     recentTextRef.current = [];
-    setOcrStatus('Choose a game window or display…');
+    setOcrStatus('Choose a game window or display...');
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
       streamRef.current = stream;
@@ -305,7 +305,7 @@ function Home() {
       track?.addEventListener('ended', () => {
         stopCapture();
       }, { once: true });
-      setOcrStatus('Loading Japanese OCR…');
+      setOcrStatus('Loading Japanese OCR...');
       const worker = await createWorker(ocrOrientation === 'vertical' ? 'jpn_vert' : 'jpn', undefined, {
         workerPath: new URL(`${import.meta.env.BASE_URL}ocr/worker.min.js`, window.location.href).href,
         corePath: new URL(`${import.meta.env.BASE_URL}ocr/`, window.location.href).href,
@@ -464,7 +464,7 @@ function Home() {
       }
       const overlay = new WebviewWindow(label, {
         url: 'index.html?overlay=1',
-        title: 'Kotoba Translation Overlay',
+        title: 'MHFZ-Z Translator Overlay - Dialogue',
         width: 480,
         height: 230,
         minWidth: 360,
@@ -501,30 +501,30 @@ function Home() {
     } catch { /* clipboard access is optional */ }
   };
 
-  const statusLabel = captureState === 'capturing' ? 'Capturing' : captureState === 'paused' ? 'Paused' : captureState === 'error' ? 'Capture error' : 'Ready when you are';
+  const statusLabel = captureState === 'capturing' ? 'On the hunt' : captureState === 'paused' ? 'Paused' : captureState === 'error' ? 'Capture error' : 'At camp';
   const latest = lines[0];
 
   if (isOverlay) {
     return (
-      <main className="min-h-[100dvh] w-full p-4 sm:p-7" data-testid="overlay-view">
-        <div className="mx-auto max-w-3xl overflow-hidden rounded-2xl border border-white/15 bg-[#141820]/90 shadow-2xl backdrop-blur-xl">
-          <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#d5a34d] text-[#17191c]"><Languages size={15} /></span>
-              <span className="text-xs font-semibold tracking-[.15em] text-[#d9d9d4]">KOTOBA <span className="text-[#d5a34d]">OVERLAY</span></span>
+      <main className="min-h-[100dvh] w-full p-3 sm:p-6" data-testid="overlay-view">
+        <div className="hunt-frame mx-auto max-w-3xl overflow-hidden">
+          <div className="flex items-center justify-between gap-3 border-b border-[hsl(var(--bronze)/.35)] px-4 py-2.5">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <Crest size={26} />
+              <span className="truncate font-display text-[13px] font-bold tracking-[.14em] text-[hsl(var(--parchment))]">MHFZ-Z <span className="text-[hsl(var(--bronze-hi))]">Translator Overlay</span></span>
             </div>
-            <div className="flex items-center gap-3">
-              <span className="flex items-center gap-2 font-mono-ui text-[10px] uppercase tracking-[.16em] text-white/50"><span className="h-1.5 w-1.5 rounded-full bg-[#69c5a8]" />Live translation</span>
-              <button onClick={() => void closeOverlay()} className="flex h-7 w-7 items-center justify-center rounded-md text-white/55 transition-colors hover:bg-white/10 hover:text-white" aria-label="Close overlay" data-testid="button-close-overlay"><X size={14} /></button>
+            <div className="flex shrink-0 items-center gap-3">
+              <span className="hidden items-center gap-2 font-mono-ui text-[10px] uppercase tracking-[.16em] text-[hsl(var(--parchment)/.65)] sm:flex"><span className="live-pulse h-1.5 w-1.5 rotate-45 bg-[hsl(var(--moss))]" />Live</span>
+              <button onClick={() => void closeOverlay()} className="icon-btn" aria-label="Close overlay" data-testid="button-close-overlay"><X size={15} /></button>
             </div>
           </div>
           {latest ? (
-            <div className="space-y-3 px-6 py-5" data-testid="overlay-latest-translation">
-              <p className="font-jp text-lg leading-relaxed text-white/60">{latest.sourceText}</p>
-              <p className="text-xl font-medium leading-relaxed text-[#f2d49b]">{latest.translatedText}</p>
+            <div className="space-y-2.5 px-5 py-4 sm:px-6 sm:py-5" data-testid="overlay-latest-translation">
+              <p className="font-jp text-base leading-relaxed text-[hsl(var(--parchment)/.72)] sm:text-lg" lang="ja">{latest.sourceText}</p>
+              <p className="border-l-2 border-[hsl(var(--ember))] pl-3 font-display text-lg font-semibold leading-relaxed text-[hsl(var(--parchment))] sm:text-xl">{latest.translatedText}</p>
             </div>
           ) : (
-            <div className="px-6 py-7 text-sm text-white/55" data-testid="overlay-empty-state">Japanese dialogue will appear here.</div>
+            <div className="flex items-center gap-3 px-5 py-6 text-sm text-[hsl(var(--parchment)/.7)]" data-testid="overlay-empty-state"><Captions size={16} className="shrink-0 text-[hsl(var(--bronze-hi))]" />Japanese dialogue will appear here once the hunt begins.</div>
           )}
         </div>
       </main>
@@ -532,68 +532,61 @@ function Home() {
   }
 
   return (
-    <main className="noise-layer min-h-[100dvh] px-4 py-5 text-[#e9e7df] sm:px-7 sm:py-7 lg:px-10">
+    <main className="noise-layer min-h-[100dvh] px-3 py-4 text-[hsl(var(--foreground))] sm:px-6 sm:py-6 lg:px-10">
       <div className="mx-auto max-w-[1440px]">
-        <header className="mb-8 flex flex-wrap items-center justify-between gap-4 border-b border-white/[.08] pb-5">
+        <header className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b-2 border-double border-[hsl(var(--bronze)/.45)] pb-4">
           <div className="flex items-center gap-3">
-            <div className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-[#d5a34d]/30 bg-[#d5a34d]/10 text-[#d5a34d]">
-              <Languages size={20} strokeWidth={1.8} />
-              <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-[#1b1e25] bg-[#6cc5a4]" />
-            </div>
+            <Crest size={46} />
             <div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-[15px] font-bold tracking-[.16em]">KOTOBA</span>
-                <span className="font-mono-ui text-[9px] tracking-[.19em] text-[#d5a34d]">OVERLAY</span>
-              </div>
-              <p className="mt-0.5 text-xs text-[#90949a]">Japanese, without leaving the game.</p>
+              <h1 className="font-display text-lg font-bold leading-none tracking-[.08em] text-[hsl(var(--parchment))] sm:text-xl">MHFZ-Z <span className="text-[hsl(var(--bronze-hi))]">Translator Overlay</span></h1>
+              <p className="mt-1.5 text-xs text-[hsl(var(--muted-foreground))]">A hunter's field journal for Japanese dialogue. Unofficial fan tool.</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <div className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] ${captureState === 'capturing' ? 'border-[#65bb9d]/25 bg-[#65bb9d]/[.08] text-[#86d4b6]' : captureState === 'error' ? 'border-[#d67a6e]/30 bg-[#d67a6e]/[.08] text-[#e89a8f]' : 'border-white/10 bg-white/[.025] text-[#a1a3a5]'}`} data-testid="status-capture">
-              <span className={`h-1.5 w-1.5 rounded-full ${captureState === 'capturing' ? 'live-pulse bg-[#76d5b1]' : captureState === 'error' ? 'bg-[#e38a7b]' : 'bg-[#858b90]'}`} />
+          <div className="flex flex-wrap items-center gap-2">
+            <div className={`flex items-center gap-2 border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[.12em] ${captureState === 'capturing' ? 'border-[hsl(var(--moss)/.5)] bg-[hsl(var(--moss)/.12)] text-[hsl(var(--moss-hi))]' : captureState === 'error' ? 'border-[hsl(var(--ember)/.55)] bg-[hsl(var(--ember)/.12)] text-[hsl(var(--ember-hi))]' : 'border-[hsl(var(--bronze)/.35)] text-[hsl(var(--muted-foreground))]'}`} data-testid="status-capture">
+              <span className={`h-1.5 w-1.5 rotate-45 ${captureState === 'capturing' ? 'live-pulse bg-[hsl(var(--moss-hi))]' : captureState === 'error' ? 'bg-[hsl(var(--ember-hi))]' : 'bg-[hsl(var(--bronze))]'}`} />
               {statusLabel}
             </div>
-            <button onClick={() => void openOverlay()} className="flex h-9 items-center gap-2 rounded-lg border border-white/10 px-3 text-xs text-[#c1c1bc] transition-colors hover:border-[#d5a34d]/40 hover:text-[#f1d39b]" data-testid="button-open-overlay">
+            <button onClick={() => void openOverlay()} className="btn-ghost" data-testid="button-open-overlay">
               <ArrowUpRight size={14} /> {isDesktop ? 'Open overlay' : 'Preview overlay'}
             </button>
           </div>
         </header>
 
-        <section className="mb-7 grid gap-4 lg:grid-cols-[1.2fr_.8fr]">
-          <div className="relative overflow-hidden rounded-2xl border border-[#d5a34d]/20 bg-[#202127] p-5 sm:p-6">
-            <div className="pointer-events-none absolute -right-7 -top-16 h-52 w-52 rounded-full border border-[#d5a34d]/[.08]" />
-            <div className="pointer-events-none absolute -right-1 -top-10 h-40 w-40 rounded-full border border-[#d5a34d]/[.08]" />
+        <section className="mb-6 grid gap-4 lg:grid-cols-[1.25fr_.75fr]">
+          <div className="hunt-panel relative overflow-hidden p-5 sm:p-6">
+            <svg className="pointer-events-none absolute -right-10 -top-10 h-56 w-56 text-[hsl(var(--bronze)/.1)]" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" strokeWidth="1" /><circle cx="50" cy="50" r="36" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="3 4" /><path d="M50 8 L56 44 L92 50 L56 56 L50 92 L44 56 L8 50 L44 44 Z" fill="currentColor" /></svg>
             <div className="relative flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[.2em] text-[#d5a34d]"><Monitor size={13} /> Capture source</div>
-                <h1 className="text-xl font-semibold tracking-[-.03em] sm:text-2xl">{captureName || 'Choose a game window'}</h1>
-                <p className="mt-1.5 max-w-lg text-sm leading-relaxed text-[#9a9ba0]">{translationMode === 'offline' ? 'Read and translate Japanese dialogue on your device. Prepare the model once, then play offline without a key.' : 'Cloud mode sends recognized dialogue—not captured frames—to the developer’s service and OpenAI.'}</p>
+              <div className="min-w-0">
+                <div className="rune-label mb-2"><Monitor size={13} /> Quest target</div>
+                <h2 className="break-words font-display text-xl font-bold sm:text-2xl">{captureName || 'Choose a game window'}</h2>
+                <p className="mt-1.5 max-w-lg text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">{translationMode === 'offline' ? 'Read and translate Japanese dialogue on your device. Prepare the model once, then play offline without a key.' : 'Cloud mode sends recognized dialogue, not captured frames, to the developer\u2019s service and OpenAI.'}</p>
               </div>
-              <div className="flex items-center gap-2 rounded-lg border border-white/[.08] bg-black/10 px-3 py-2 text-[11px] text-[#b0b1b1]">
-                <ShieldCheck size={14} className="text-[#75c5a6]" /> Screen stays on your device
+              <div className="flex items-center gap-2 border border-[hsl(var(--moss)/.35)] bg-[hsl(var(--moss)/.08)] px-3 py-2 text-[11px] text-[hsl(var(--moss-hi))]">
+                <ShieldCheck size={14} /> Screen stays on your device
               </div>
             </div>
             <div className="relative mt-5 flex flex-wrap items-center gap-2.5">
               {captureState === 'idle' || captureState === 'error' ? (
-                <button onClick={startCapture} className="flex h-10 items-center gap-2 rounded-lg bg-[#d5a34d] px-4 text-xs font-semibold text-[#1d1d1b] transition-all hover:bg-[#e3b766] active:scale-[.98]" data-testid="button-select-capture">
+                <button onClick={startCapture} className="btn-bronze" data-testid="button-select-capture">
                   <Monitor size={15} /> Select game or screen
                 </button>
               ) : (
                 <>
                   {captureState === 'capturing' ? (
-                    <button onClick={() => { captureStateRef.current = 'paused'; setCaptureState('paused'); }} className="flex h-10 items-center gap-2 rounded-lg bg-[#d5a34d] px-4 text-xs font-semibold text-[#1d1d1b] hover:bg-[#e3b766]" data-testid="button-pause-capture"><Pause size={14} /> Pause capture</button>
+                    <button onClick={() => { captureStateRef.current = 'paused'; setCaptureState('paused'); }} className="btn-bronze" data-testid="button-pause-capture"><Pause size={14} /> Pause capture</button>
                   ) : (
-                    <button onClick={() => { captureStateRef.current = 'capturing'; setCaptureState('capturing'); }} className="flex h-10 items-center gap-2 rounded-lg bg-[#d5a34d] px-4 text-xs font-semibold text-[#1d1d1b] hover:bg-[#e3b766]" data-testid="button-resume-capture"><Play size={14} /> Resume capture</button>
+                    <button onClick={() => { captureStateRef.current = 'capturing'; setCaptureState('capturing'); }} className="btn-bronze" data-testid="button-resume-capture"><Play size={14} /> Resume capture</button>
                   )}
-                  <button onClick={stopCapture} className="flex h-10 items-center gap-2 rounded-lg border border-white/10 px-3.5 text-xs text-[#c2c1bc] transition-colors hover:border-[#d67a6e]/40 hover:text-[#e89a8f]" data-testid="button-stop-capture"><Square size={12} /> Stop</button>
+                  <button onClick={stopCapture} className="btn-ghost btn-danger" data-testid="button-stop-capture"><Square size={12} /> Stop</button>
                 </>
               )}
-              <span className="ml-1 flex items-center gap-1.5 font-mono-ui text-[10px] text-[#777d82]" data-testid="status-ocr"><ScanText size={13} /> {captureState === 'capturing' ? `${ocrStatus}${ocrProgress > 0 && ocrProgress < 100 ? ` ${ocrProgress}%` : ''}` : 'Local Japanese text detection'}</span>
+              <span className="ml-1 flex items-center gap-1.5 font-mono-ui text-[11px] text-[hsl(var(--muted-foreground))]" data-testid="status-ocr"><ScanText size={13} /> {captureState === 'capturing' ? `${ocrStatus}${ocrProgress > 0 && ocrProgress < 100 ? ` ${ocrProgress}%` : ''}` : 'Local Japanese text detection'}</span>
             </div>
-            {captureError && <p className="relative mt-3 flex items-center gap-2 text-xs text-[#e69b8f]" role="alert" data-testid="text-capture-error"><CircleHelp size={13} />{captureError}</p>}
+            {captureError && <p className="alert-ember relative mt-3" role="alert" data-testid="text-capture-error"><CircleHelp size={14} className="shrink-0" />{captureError}</p>}
             <div className={captureState === 'capturing' || captureState === 'paused' ? 'relative mt-5 space-y-2' : 'fixed -left-[10000px] top-0 h-px w-px overflow-hidden opacity-0'}>
               <div
-                className={`relative w-full overflow-hidden rounded-xl border border-white/10 bg-black ${selectingRegion ? 'cursor-crosshair touch-none' : ''}`}
+                className={`relative w-full overflow-hidden border-2 border-[hsl(var(--bronze)/.55)] bg-[hsl(var(--ink))] ${selectingRegion ? 'cursor-crosshair touch-none' : ''}`}
                 style={{ aspectRatio: captureAspect || '16 / 9' }}
                 onPointerDown={startRegionSelection}
                 onPointerMove={moveRegionSelection}
@@ -608,21 +601,21 @@ function Home() {
                 <video ref={videoRef} className="h-full w-full object-fill" muted playsInline aria-label="Shared game capture preview" />
                 {ocrRegion && !selectingRegion && (
                   <div
-                    className="pointer-events-none absolute border-2 border-[#d5a34d] shadow-[0_0_0_9999px_rgba(0,0,0,.3)]"
+                    className="pointer-events-none absolute border-2 border-[hsl(var(--bronze-hi))] shadow-[0_0_0_9999px_rgba(10,12,10,.35)]"
                     style={{ left: `${ocrRegion.x * 100}%`, top: `${ocrRegion.y * 100}%`, width: `${ocrRegion.width * 100}%`, height: `${ocrRegion.height * 100}%` }}
                   />
                 )}
                 {selectingRegion && draftRegion && (
                   <div
-                    className="pointer-events-none absolute border-2 border-[#f0c26f] shadow-[0_0_0_9999px_rgba(0,0,0,.42)]"
+                    className="pointer-events-none absolute border-2 border-dashed border-[hsl(var(--parchment))] shadow-[0_0_0_9999px_rgba(10,12,10,.45)]"
                     style={{ left: `${draftRegion.x * 100}%`, top: `${draftRegion.y * 100}%`, width: `${draftRegion.width * 100}%`, height: `${draftRegion.height * 100}%` }}
                   />
                 )}
-                {selectingRegion && !draftRegion && <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/25 text-xs font-medium text-white">Drag around the Japanese dialogue</div>}
+                {selectingRegion && !draftRegion && <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/30 font-display text-sm font-semibold tracking-wide text-[hsl(var(--parchment))]">Drag around the Japanese dialogue</div>}
               </div>
               {(captureState === 'capturing' || captureState === 'paused') && (
-                <div className="flex flex-wrap items-center justify-between gap-2 text-[10px]">
-                  <span className="text-[#858b8d]">{ocrRegion ? 'OCR reads only the highlighted dialogue area.' : 'OCR reads the full shared screen.'}</span>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                  <span className="text-[hsl(var(--muted-foreground))]">{ocrRegion ? 'OCR reads only the highlighted dialogue area.' : 'OCR reads the full shared screen.'}</span>
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
@@ -632,103 +625,101 @@ function Home() {
                         setCaptureError('');
                         setSelectingRegion((value) => !value);
                       }}
-                      className="text-[#d5a34d] transition-colors hover:text-[#f1d39b]"
+                      className="link-bronze"
                       data-testid="button-select-dialogue-region"
                     >
                       {selectingRegion ? 'Cancel area selection' : ocrRegion ? 'Redraw dialogue area' : 'Select dialogue area'}
                     </button>
-                    {ocrRegion && <button type="button" onClick={() => { setOcrRegion(null); setSelectingRegion(false); }} className="text-[#9b9fa0] hover:text-[#dedbd3]" data-testid="button-reset-dialogue-region">Full screen</button>}
+                    {ocrRegion && <button type="button" onClick={() => { setOcrRegion(null); setSelectingRegion(false); }} className="link-bronze" data-testid="button-reset-dialogue-region">Full screen</button>}
                   </div>
                 </div>
               )}
             </div>
           </div>
 
-          <div className="flex flex-col justify-between rounded-2xl border border-white/[.09] bg-[#1a1d24] p-5 sm:p-6">
+          <div className="parchment flex flex-col justify-between p-5 sm:p-6">
             <div>
-              <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[.2em] text-[#78c2a4]"><Gamepad2 size={13} /> At a glance</div>
+              <div className="rune-label rune-label-dark mb-2"><Gamepad2 size={13} /> Hunt log</div>
               <div className="flex items-end justify-between gap-3">
-                <div><div className="font-mono-ui text-3xl tracking-[-.06em]" data-testid="text-line-count">{lines.length.toString().padStart(2, '0')}</div><p className="mt-1 text-xs text-[#96999d]">translated lines this session</p></div>
-                <div className="mb-1 flex items-center gap-2 text-right text-[11px] text-[#96999d]"><span className="h-1.5 w-1.5 rounded-full bg-[#78c2a4]" />Japanese <ArrowDown size={12} className="text-[#6c7277]" /> English</div>
+                <div><div className="font-display text-5xl font-bold leading-none" data-testid="text-line-count">{lines.length.toString().padStart(2, '0')}</div><p className="mt-2 text-xs font-medium">translated lines recorded</p></div>
+                <div className="mb-1 flex items-center gap-1.5 text-right text-[11px] font-semibold">Japanese <ArrowDown size={12} /> English</div>
               </div>
             </div>
-            <div className="mt-5 border-t border-white/[.07] pt-3 text-[11px] leading-relaxed text-[#777d82]">
-              <div className="flex items-center justify-between"><span>Translation engine</span><span className="font-mono-ui text-[#b3b2ad]" data-testid="text-active-engine">{translationMode === 'offline' ? 'On-device · Japanese → English' : 'Cloud · OpenAI GPT-5 mini'}</span></div>
+            <div className="mt-5 border-t border-dashed border-[hsl(var(--ink)/.35)] pt-3 text-[11px] leading-relaxed">
+              <div className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold uppercase tracking-[.12em]">Engine</span><span className="font-mono-ui" data-testid="text-active-engine">{translationMode === 'offline' ? 'On-device \u00b7 Japanese \u2192 English' : 'Cloud \u00b7 OpenAI GPT-5 mini'}</span></div>
             </div>
           </div>
         </section>
 
-        <section className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="min-w-0 overflow-hidden rounded-2xl border border-white/[.09] bg-[#191c22]">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[.07] px-5 py-4">
+        <section className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="hunt-panel min-w-0 overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[hsl(var(--bronze)/.3)] px-5 py-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#d5a34d]/10 text-[#d5a34d]"><Captions size={16} /></div>
-                <div><h2 className="text-sm font-semibold">Dialogue stream</h2><p className="mt-0.5 text-[10px] text-[#7e8388]">Most recent first <span className="mx-1 text-[#545b60]">/</span> {lines.length} {lines.length === 1 ? 'line' : 'lines'}</p></div>
+                <div className="flex h-9 w-9 rotate-45 items-center justify-center border border-[hsl(var(--bronze)/.6)] bg-[hsl(var(--bronze)/.12)] text-[hsl(var(--bronze-hi))]"><Captions size={16} className="-rotate-45" /></div>
+                <div><h2 className="font-display text-base font-bold">Dialogue journal</h2><p className="mt-0.5 text-[11px] text-[hsl(var(--muted-foreground))]">Most recent first <span className="mx-1 opacity-50">/</span> {lines.length} {lines.length === 1 ? 'line' : 'lines'}</p></div>
               </div>
               <div className="flex items-center gap-1.5">
-                <button onClick={() => setAutoScroll((value) => !value)} className={`flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[10px] transition-colors ${autoScroll ? 'bg-white/[.06] text-[#d6d5cf]' : 'text-[#81868a] hover:bg-white/[.04]'}`} data-testid="button-toggle-follow"><ArrowDown size={12} /> Follow</button>
-                <button onClick={() => setLines([])} disabled={!lines.length} className="flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[10px] text-[#81868a] transition-colors hover:bg-[#d67a6e]/10 hover:text-[#e59b90] disabled:cursor-not-allowed disabled:opacity-40" data-testid="button-clear-transcript"><Trash2 size={12} /> Clear</button>
+                <button onClick={() => setAutoScroll((value) => !value)} aria-pressed={autoScroll} className={`btn-chip ${autoScroll ? 'btn-chip-on' : ''}`} data-testid="button-toggle-follow"><ArrowDown size={12} /> Follow</button>
+                <button onClick={() => setLines([])} disabled={!lines.length} className="btn-chip btn-danger" data-testid="button-clear-transcript"><Trash2 size={12} /> Clear</button>
               </div>
             </div>
-            <div ref={transcriptRef} className="max-h-[420px] min-h-[258px] overflow-y-auto scroll-smooth">
+            <div ref={transcriptRef} className="max-h-[440px] min-h-[260px] overflow-y-auto scroll-smooth">
               {translationBusy && (
-                <div className="border-b border-white/[.06] px-5 py-5" data-testid="status-translating">
-                  <div className="mb-3 flex items-center gap-2 font-mono-ui text-[9px] uppercase tracking-[.16em] text-[#d5a34d]"><LoaderCircle size={12} className="animate-spin" />Translating</div>
-                  <div className="h-3 w-2/3 animate-pulse rounded bg-white/[.07]" /><div className="mt-3 h-3 w-1/2 animate-pulse rounded bg-white/[.05]" />
+                <div className="border-b border-[hsl(var(--bronze)/.18)] px-5 py-5" data-testid="status-translating">
+                  <div className="mb-3 flex items-center gap-2 font-mono-ui text-[10px] uppercase tracking-[.16em] text-[hsl(var(--bronze-hi))]"><LoaderCircle size={12} className="animate-spin" />Translating</div>
+                  <div className="h-3 w-2/3 animate-pulse bg-[hsl(var(--parchment)/.1)]" /><div className="mt-3 h-3 w-1/2 animate-pulse bg-[hsl(var(--parchment)/.07)]" />
                 </div>
               )}
-              {(translationError || translate.isError) && <div className="mx-5 my-4 rounded-lg border border-[#d67a6e]/20 bg-[#d67a6e]/[.07] px-3 py-2.5 text-xs text-[#e4a097]" role="alert" data-testid="status-translation-error">{translationError || 'Translation failed. Submit the line again to retry.'}</div>}
+              {(translationError || translate.isError) && <div className="alert-ember mx-5 my-4" role="alert" data-testid="status-translation-error"><CircleHelp size={14} className="shrink-0" />{translationError || 'Translation failed. Submit the line again to retry.'}</div>}
               {lines.length ? lines.map((line, index) => (
-                <article key={line.timestamp} className={`group border-b border-white/[.055] px-5 py-5 transition-colors hover:bg-white/[.015] ${index === 0 ? 'rise-in' : ''}`} data-testid={`card-translation-${line.timestamp}`}>
-                  <div className="mb-3 flex items-center justify-between">
-                    <span className="flex items-center gap-2 font-mono-ui text-[9px] uppercase tracking-[.13em] text-[#737a80]"><span className="h-1 w-1 rounded-full bg-[#78c2a4]" />{new Date(line.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
-                    <button onClick={() => copyTranslation(line)} className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[10px] text-[#7e8589] opacity-0 transition-all hover:bg-white/[.06] hover:text-[#e4e0d6] group-hover:opacity-100 focus:opacity-100" data-testid={`button-copy-translation-${line.timestamp}`} aria-label="Copy translation">{copiedId === line.timestamp ? <Check size={12} /> : <Copy size={12} />}{copiedId === line.timestamp ? 'Copied' : 'Copy'}</button>
+                <article key={line.timestamp} className={`group border-b border-[hsl(var(--bronze)/.15)] px-5 py-5 transition-colors hover:bg-[hsl(var(--bronze)/.05)] ${index === 0 ? 'rise-in' : ''}`} data-testid={`card-translation-${line.timestamp}`}>
+                  <div className="mb-2.5 flex items-center justify-between">
+                    <span className="flex items-center gap-2 font-mono-ui text-[10px] uppercase tracking-[.13em] text-[hsl(var(--muted-foreground))]"><span className="h-1.5 w-1.5 rotate-45 bg-[hsl(var(--bronze))]" />{new Date(line.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                    <button onClick={() => copyTranslation(line)} className="btn-chip opacity-60 group-hover:opacity-100 focus-visible:opacity-100" data-testid={`button-copy-translation-${line.timestamp}`} aria-label="Copy translation">{copiedId === line.timestamp ? <Check size={12} /> : <Copy size={12} />}{copiedId === line.timestamp ? 'Copied' : 'Copy'}</button>
                   </div>
-                  <p className="font-jp text-[15px] leading-[1.8] text-[#d7d4cc]" lang="ja" data-testid={`text-source-${line.timestamp}`}>{line.sourceText}</p>
-                  <div className="mt-2 flex items-start gap-2.5">
-                    <span className="mt-[3px] h-4 w-[2px] shrink-0 rounded bg-[#d5a34d]" />
-                    <p className="text-sm leading-relaxed text-[#f0d49f]" data-testid={`text-translation-${line.timestamp}`}>{line.translatedText}</p>
-                  </div>
+                  <p className="font-jp text-[15px] leading-[1.85] text-[hsl(var(--parchment)/.8)]" lang="ja" data-testid={`text-source-${line.timestamp}`}>{line.sourceText}</p>
+                  <p className="mt-2 border-l-2 border-[hsl(var(--ember))] pl-3 text-[15px] leading-relaxed text-[hsl(var(--parchment))]" data-testid={`text-translation-${line.timestamp}`}>{line.translatedText}</p>
                 </article>
               )) : (
-                <div className="flex min-h-[258px] flex-col items-center justify-center px-6 py-10 text-center" data-testid="empty-transcript">
-                  <div className="relative mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-[#d5a34d]/20 bg-[#d5a34d]/[.06] text-[#d5a34d]"><Captions size={23} strokeWidth={1.4} /><span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-[#78c2a4]" /></div>
-                  <h3 className="text-sm font-medium text-[#dfddd5]">Your dialogue appears here</h3>
-                  <p className="mt-1.5 max-w-xs text-xs leading-relaxed text-[#7e8489]">Select a game capture to detect and translate Japanese dialogue automatically, or enter a line below.</p>
+                <div className="flex min-h-[260px] flex-col items-center justify-center px-6 py-10 text-center" data-testid="empty-transcript">
+                  <Crest size={60} muted />
+                  <h3 className="mt-4 font-display text-base font-bold text-[hsl(var(--parchment))]">The journal is blank</h3>
+                  <p className="mt-1.5 max-w-xs text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">Select a game capture to detect and translate Japanese dialogue automatically, or enter a line below.</p>
                 </div>
               )}
             </div>
             <Form {...manualForm}>
-            <form onSubmit={submitText} className="border-t border-white/[.07] bg-[#171a20] p-4 sm:px-5">
-              <label htmlFor="dialogue-input" className="mb-2 flex items-center justify-between text-[10px] font-medium uppercase tracking-[.14em] text-[#81868a]"><span>Translate a line</span><span className="font-mono-ui normal-case tracking-normal">Japanese → English</span></label>
-              <div className="flex gap-2">
-                <input id="dialogue-input" {...manualForm.register('text', { maxLength: 2000 })} value={draft} maxLength={2000} placeholder="Paste or type Japanese dialogue…" className="h-11 min-w-0 flex-1 rounded-lg border border-white/[.1] bg-[#20232a] px-3.5 font-jp text-sm text-[#e9e7df] outline-none placeholder:font-sans placeholder:text-[#6e747a] focus:border-[#d5a34d]/50 focus:ring-2 focus:ring-[#d5a34d]/10" data-testid="input-dialogue" />
-                <button type="submit" disabled={!draft.trim() || translationBusy || offlineBusy} className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#d5a34d] px-4 text-xs font-semibold text-[#201e19] transition-all hover:bg-[#e3b766] disabled:cursor-not-allowed disabled:opacity-45" data-testid="button-translate"><Languages size={14} /> Translate</button>
+            <form onSubmit={submitText} className="border-t-2 border-double border-[hsl(var(--bronze)/.4)] bg-[hsl(var(--ink)/.5)] p-4 sm:px-5">
+              <label htmlFor="dialogue-input" className="mb-2 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[.14em] text-[hsl(var(--bronze-hi))]"><span>Translate a line</span><span className="font-mono-ui normal-case tracking-normal text-[hsl(var(--muted-foreground))]">Japanese to English</span></label>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <input id="dialogue-input" {...manualForm.register('text', { maxLength: 2000 })} value={draft} maxLength={2000} placeholder="Paste or type Japanese dialogue..." className="field h-11 min-w-0 flex-1 font-jp text-sm" data-testid="input-dialogue" />
+                <button type="submit" disabled={!draft.trim() || translationBusy || offlineBusy} className="btn-bronze h-11 justify-center" data-testid="button-translate"><Languages size={14} /> Translate</button>
               </div>
-              <div className="mt-2 flex items-center justify-between text-[10px] text-[#656c72]"><span>Manual translation is available alongside automatic capture.</span><span className="font-mono-ui">{draft.length}/2000</span></div>
+              <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-[hsl(var(--muted-foreground))]"><span>Manual translation works alongside automatic capture.</span><span className="font-mono-ui">{draft.length}/2000</span></div>
             </form>
             </Form>
           </div>
 
           <aside className="space-y-4">
-            <div className="rounded-2xl border border-white/[.09] bg-[#191c22] p-5">
-              <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[.19em] text-[#aab0b2]"><Settings2 size={14} /> Session setup</div>
+            <div className="hunt-panel p-5">
+              <div className="rune-label mb-4"><Settings2 size={14} /> Loadout</div>
               <div className="space-y-3.5">
-                <div className="flex items-center justify-between border-b border-white/[.055] pb-3.5">
-                  <div className="flex items-center gap-2.5"><span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/[.04] text-[#9a9ea0]"><Languages size={14} /></span><div><p className="text-xs text-[#dedbd3]">Language pair</p><p className="mt-0.5 text-[10px] text-[#7f8588]">Source and target</p></div></div>
-                  <span className="flex items-center gap-1 text-[10px] text-[#b4b2aa]">JA <ChevronDown size={12} /></span>
+                <div className="flex items-center justify-between border-b border-[hsl(var(--bronze)/.15)] pb-3.5">
+                  <div className="flex items-center gap-2.5"><span className="slot-icon"><Languages size={14} /></span><div><p className="text-xs font-semibold">Language pair</p><p className="mt-0.5 text-[11px] text-[hsl(var(--muted-foreground))]">Source and target</p></div></div>
+                  <span className="flex items-center gap-1 text-[11px]">JA <ChevronDown size={12} /></span>
                 </div>
-                <div className="flex items-center justify-between border-b border-white/[.055] pb-3.5">
-                  <div className="flex items-center gap-2.5"><span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/[.04] text-[#9a9ea0]"><Radio size={14} /></span><div><p className="text-xs text-[#dedbd3]">Capture mode</p><p className="mt-0.5 text-[10px] text-[#7f8588]">Share a game window</p></div></div>
-                  <span className="rounded-md bg-white/[.045] px-2 py-1 text-[9px] text-[#acada8]">Window</span>
+                <div className="flex items-center justify-between border-b border-[hsl(var(--bronze)/.15)] pb-3.5">
+                  <div className="flex items-center gap-2.5"><span className="slot-icon"><Radio size={14} /></span><div><p className="text-xs font-semibold">Capture mode</p><p className="mt-0.5 text-[11px] text-[hsl(var(--muted-foreground))]">Share a game window</p></div></div>
+                  <span className="border border-[hsl(var(--bronze)/.3)] px-2 py-1 text-[10px]">Window</span>
                 </div>
-                <div className="flex items-center justify-between border-b border-white/[.055] pb-3.5">
-                  <div><p className="text-xs text-[#dedbd3]">Japanese text layout</p><p className="mt-0.5 text-[10px] text-[#7f8588]">Choose how dialogue is arranged</p></div>
+                <div className="flex items-center justify-between gap-3 border-b border-[hsl(var(--bronze)/.15)] pb-3.5">
+                  <div><label htmlFor="ocr-orientation" className="text-xs font-semibold">Japanese text layout</label><p className="mt-0.5 text-[11px] text-[hsl(var(--muted-foreground))]">How dialogue is arranged</p></div>
                   <select
+                    id="ocr-orientation"
                     value={ocrOrientation}
                     onChange={(event) => setOcrOrientation(event.target.value as 'horizontal' | 'vertical')}
                     disabled={captureState !== 'idle' && captureState !== 'error'}
-                    className="rounded-md border border-white/[.1] bg-[#20232a] px-2 py-1.5 text-[10px] text-[#c7c4bc] outline-none focus:border-[#d5a34d]/50 disabled:opacity-50"
+                    className="field px-2 py-1.5 text-[11px] disabled:opacity-50"
                     data-testid="select-ocr-orientation"
                   >
                     <option value="horizontal">Horizontal</option>
@@ -736,14 +727,14 @@ function Home() {
                   </select>
                 </div>
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5"><span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/[.04] text-[#9a9ea0]"><Volume2 size={14} /></span><div><p className="text-xs text-[#dedbd3]">Overlay preview</p><p className="mt-0.5 text-[10px] text-[#7f8588]">Transparent companion view</p></div></div>
-                  <button onClick={() => void openOverlay()} className="flex h-7 items-center gap-1 rounded-md border border-white/[.1] px-2 text-[10px] text-[#c1beb4] hover:border-[#d5a34d]/40 hover:text-[#f1d39b]" data-testid="button-preview-overlay">{isDesktop ? 'Open' : 'Preview'} <ArrowUpRight size={11} /></button>
+                  <div className="flex items-center gap-2.5"><span className="slot-icon"><Volume2 size={14} /></span><div><p className="text-xs font-semibold">Overlay preview</p><p className="mt-0.5 text-[11px] text-[hsl(var(--muted-foreground))]">Transparent companion view</p></div></div>
+                  <button onClick={() => void openOverlay()} className="btn-chip" data-testid="button-preview-overlay">{isDesktop ? 'Open' : 'Preview'} <ArrowUpRight size={11} /></button>
                 </div>
               </div>
-              <TranslationOptions mode={translationMode} onModeChange={changeTranslationMode} offlineStatus={offlineStatus} offlineBusy={offlineBusy} onPrepareOffline={() => void prepareOffline()} online={online} busy={translationBusy} />
+              <div className="mt-5"><TranslationOptions mode={translationMode} onModeChange={changeTranslationMode} offlineStatus={offlineStatus} offlineBusy={offlineBusy} onPrepareOffline={() => void prepareOffline()} online={online} busy={translationBusy} /></div>
               {translationMode === 'cloud' && <Form {...apiForm}>
-              <form onSubmit={saveApiBaseUrl} className="mt-4 border-t border-white/[.07] pt-4">
-                <label htmlFor="translation-api-url" className="mb-2 block text-[10px] font-medium uppercase tracking-[.14em] text-[#81868a]">Translation service URL</label>
+              <form onSubmit={saveApiBaseUrl} className="mt-4 border-t border-[hsl(var(--bronze)/.25)] pt-4">
+                <label htmlFor="translation-api-url" className="mb-2 block text-[11px] font-semibold uppercase tracking-[.14em] text-[hsl(var(--bronze-hi))]">Translation service URL</label>
                 <div className="flex gap-2">
                   <input
                     id="translation-api-url"
@@ -751,30 +742,41 @@ function Home() {
                     {...apiForm.register('url', { onChange: () => setApiSaved(false) })}
                     value={apiBaseUrl}
                     placeholder={isDesktop ? 'https://your-published-app.replit.app' : 'Optional for this preview'}
-                    className="h-9 min-w-0 flex-1 rounded-lg border border-white/[.1] bg-[#20232a] px-2.5 text-[10px] text-[#e9e7df] outline-none placeholder:text-[#6e747a] focus:border-[#d5a34d]/50"
+                    className="field h-9 min-w-0 flex-1 px-2.5 text-[11px]"
                     data-testid="input-translation-api-url"
                   />
-                  <button type="submit" className="h-9 rounded-lg border border-white/[.12] px-2.5 text-[10px] text-[#c1beb4] transition-colors hover:border-[#d5a34d]/40 hover:text-[#f1d39b]" data-testid="button-save-api-url">Save</button>
+                  <button type="submit" className="btn-ghost h-9" data-testid="button-save-api-url">Save</button>
                 </div>
-                <p className="mt-2 text-[10px] leading-relaxed text-[#737a7e]">No API key or service token needed. {isDesktop ? 'The developer’s published service is preconfigured.' : 'Leave the URL blank to use this preview’s service.'} Your cloud choice lasts only for this app session. {apiSaved && <span className="text-[#78c2a4]" data-testid="status-api-saved">Settings saved</span>}</p>
+                <p className="mt-2 text-[11px] leading-relaxed text-[hsl(var(--muted-foreground))]">No API key or service token needed. {isDesktop ? 'The developer\u2019s published service is preconfigured.' : 'Leave the URL blank to use this preview\u2019s service.'} Your cloud choice lasts only for this app session. {apiSaved && <span className="text-[hsl(var(--moss-hi))]" data-testid="status-api-saved">Settings saved</span>}</p>
               </form>
               </Form>}
             </div>
-            <div className="overflow-hidden rounded-2xl border border-[#78c2a4]/15 bg-[#1b2424] p-5">
-              <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[.17em] text-[#79c7a7]"><ShieldCheck size={14} /> Built for your session</div>
-              <p className="text-[12px] leading-[1.7] text-[#a4b1aa]">{translationMode === 'offline' ? 'Captured frames and dialogue stay on your device. Local translation never calls the cloud service.' : 'You opted into cloud translation. Only recognized dialogue is sent to the developer’s service and OpenAI; captured frames stay on your device.'}</p>
-              <div className="mt-4 flex items-center gap-2 border-t border-white/[.06] pt-3 font-mono-ui text-[9px] tracking-[.05em] text-[#76877e]"><span className="h-1.5 w-1.5 rounded-full bg-[#79c7a7]" /> No game files modified</div>
+            <div className="parchment p-5">
+              <div className="rune-label rune-label-dark mb-3"><ShieldCheck size={14} /> Camp rules</div>
+              <p className="text-[12.5px] leading-[1.7]">{translationMode === 'offline' ? 'Captured frames and dialogue stay on your device. Local translation never calls the cloud service.' : 'You opted into cloud translation. Only recognized dialogue is sent to the developer\u2019s service and OpenAI; captured frames stay on your device.'}</p>
+              <div className="mt-4 flex items-center gap-2 border-t border-dashed border-[hsl(var(--ink)/.35)] pt-3 font-mono-ui text-[10px] tracking-[.05em]"><span className="h-1.5 w-1.5 rotate-45 bg-[hsl(var(--ink))]" /> No game files modified</div>
             </div>
-            <div className="flex items-start gap-2.5 px-1 text-[10px] leading-relaxed text-[#737a7e]"><CircleHelp size={13} className="mt-0.5 shrink-0 text-[#858b8d]" /><p>For the overlay to appear over a game, use the Windows desktop build. Borderless-window mode is recommended for fullscreen games.</p></div>
+            <div className="flex items-start gap-2.5 px-1 text-[11px] leading-relaxed text-[hsl(var(--muted-foreground))]"><CircleHelp size={13} className="mt-0.5 shrink-0" /><p>For the overlay to appear over a game, use the Windows desktop build. Borderless-window mode is recommended for fullscreen games.</p></div>
           </aside>
         </section>
-        <footer className="mt-8 flex flex-wrap items-center justify-between gap-2 border-t border-white/[.07] pt-4 text-[10px] text-[#62696e]">
-          <span className="font-mono-ui tracking-[.08em]">KOTOBA OVERLAY <span className="mx-1 text-[#42494e]">/</span> PLAY ON</span>
-          <span className="flex items-center gap-1.5">Made for stories worth understanding <span className="text-[#d5a34d]">·</span> <button onClick={() => void openOverlay()} className="inline-flex items-center gap-1 text-[#8b908f] hover:text-[#d5a34d]" data-testid="button-overlay-mode">Overlay window <ArrowUpRight size={10} /></button></span>
+        <footer className="mt-8 flex flex-wrap items-center justify-between gap-2 border-t-2 border-double border-[hsl(var(--bronze)/.35)] pt-4 text-[11px] text-[hsl(var(--muted-foreground))]">
+          <span className="font-mono-ui tracking-[.08em]">MHFZ-Z TRANSLATOR OVERLAY <span className="mx-1 opacity-50">/</span> Fan-made, not affiliated with Capcom</span>
+          <button onClick={() => void openOverlay()} className="link-bronze inline-flex items-center gap-1" data-testid="button-overlay-mode">Overlay window <ArrowUpRight size={11} /></button>
         </footer>
       </div>
       <canvas ref={canvasRef} className="hidden" aria-hidden="true" />
     </main>
+  );
+}
+
+function Crest({ size = 40, muted = false }: { size?: number; muted?: boolean }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true" className={`shrink-0 ${muted ? 'opacity-60' : ''}`}>
+      <path d="M32 3 L58 14 V32 C58 46 46 56 32 61 C18 56 6 46 6 32 V14 Z" fill="hsl(var(--ink))" stroke="hsl(var(--bronze))" strokeWidth="2.5" />
+      <path d="M32 9 L52 18 V32 C52 43 43 51 32 55 C21 51 12 43 12 32 V18 Z" fill="none" stroke="hsl(var(--bronze) / .45)" strokeWidth="1" />
+      <path d="M22 44 C24 34 26 26 30 18 M30 46 C32 36 33 28 36 19 M38 44 C39 36 41 29 44 22" stroke="hsl(var(--parchment))" strokeWidth="3" strokeLinecap="round" fill="none" />
+      <path d="M32 3 L35 8 L32 11 L29 8 Z" fill="hsl(var(--ember))" />
+    </svg>
   );
 }
 

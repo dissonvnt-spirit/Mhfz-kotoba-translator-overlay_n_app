@@ -3,5 +3,5 @@
 fn main() {
     tauri::Builder::default()
         .run(tauri::generate_context!())
-        .expect("failed to launch Kotoba Overlay");
+        .expect("failed to launch MHFZ-Z Translator Overlay");
 }

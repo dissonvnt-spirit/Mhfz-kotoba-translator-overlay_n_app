@@ -1,6 +1,6 @@
 # Windows x64 desktop build
 
-Kotoba Overlay includes a Tauri 2 desktop shell and an NSIS installer target for
+MHFZ-Z Translator Overlay includes a Tauri 2 desktop shell and an NSIS installer target for
 64-bit Windows. Build it from a Windows machine with Node.js, pnpm, Rust, the
 Microsoft C++ Build Tools, and WebView2 installed:
 
@@ -41,7 +41,7 @@ to be installed on the Windows machine.
 
 Updates are announced only on GitHub Releases. The app has no update checker,
 update notice, or automatic updater. Before tagging a version, add
-`releases/vX.Y.Z.md` matching the Tauri/Cargo version, using the current release
+`releases/vX.Y.Z.md` matching the Tauri/Cargo/Cargo.lock version, using the current release
 notes as a structural example. Describe the actual version's changes, Windows
 downloads, manual updating steps, and requirements/known limitations.
 Run `pnpm --filter @workspace/kotoba-overlay run test:release-notes`.
@@ -79,4 +79,4 @@ line synchronization, transparency over a game, or fullscreen compatibility.
 The hosted runner already has desktop prerequisites; a pass does not prove
 WebView2 bootstrap behavior on a clean/offline player machine. Physical Windows
 and live-game verification remain separate work. This Linux workspace cannot
-execute these native checks; their first actual result will come from Actions.
+execute these native checks; their results are available in GitHub Actions.

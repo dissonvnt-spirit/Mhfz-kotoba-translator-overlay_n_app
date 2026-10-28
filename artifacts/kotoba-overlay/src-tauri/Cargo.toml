@@ -1,8 +1,8 @@
 [package]
 name = "kotoba-overlay"
-version = "0.2.3"
-description = "Japanese-to-English game translation overlay"
-authors = ["Kotoba Overlay"]
+version = "0.2.4"
+description = "MHFZ-Z Translator Overlay — Japanese-to-English game dialogue translation"
+authors = ["MHFZ-Z Translator Overlay contributors"]
 edition = "2021"
 
 [build-dependencies]

@@ -1,4 +1,4 @@
-name: Build Kotoba Overlay for Windows x64
+name: Build MHFZ-Z Translator Overlay for Windows x64
 
 on:
   workflow_dispatch:
@@ -33,6 +33,9 @@ jobs:
           $cargo = Get-Content artifacts/kotoba-overlay/src-tauri/Cargo.toml -Raw
           $cargoVersion = [regex]::Match($cargo, '(?m)^version\s*=\s*"([^"]+)"').Groups[1].Value
           if ($config.version -ne $cargoVersion) { throw "Tauri and Cargo versions must match." }
+          $lock = Get-Content artifacts/kotoba-overlay/src-tauri/Cargo.lock -Raw
+          $lockVersion = [regex]::Match($lock, '(?m)^name = "kotoba-overlay"\r?\nversion = "([^"]+)"').Groups[1].Value
+          if ($config.version -ne $lockVersion) { throw "Tauri and Cargo.lock versions must match." }
           if ($env:GITHUB_REF -like "refs/tags/*" -and $env:GITHUB_REF_NAME -ne "v$($config.version)") {
             throw "Release tag must match the installed Tauri version: v$($config.version)"
           }
@@ -78,7 +81,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Continue"
           $PSNativeCommandUseErrorActionPreference = $false
-          & pnpm --filter @workspace/kotoba-overlay run desktop:build:windows 2>&1 | Tee-Object -FilePath windows-build.log
+          & pnpm --filter @workspace/kotoba-overlay run desktop:build:windows -- --locked 2>&1 | Tee-Object -FilePath windows-build.log
           $buildExit = $LASTEXITCODE
           if ($buildExit -ne 0) {
             $details = (Get-Content windows-build.log -Tail 60) -join "`n"
@@ -184,6 +187,6 @@ jobs:
           gh release create "$GITHUB_REF_NAME" release-assets/*.exe \
             release-assets/SHA256SUMS.txt \
             --verify-tag \
-            --title "Kotoba Overlay $GITHUB_REF_NAME" \
+            --title "MHFZ-Z Translator Overlay $GITHUB_REF_NAME" \
             --notes-file "artifacts/kotoba-overlay/releases/$GITHUB_REF_NAME.md" \
             --generate-notes

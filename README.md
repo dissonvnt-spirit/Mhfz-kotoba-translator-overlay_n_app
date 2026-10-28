@@ -1,6 +1,11 @@
-# MHFZ Kotoba Translator Overlay
+# MHFZ-Z Translator Overlay
 
 Japanese-to-English dialogue translation companion for Windows x64, including a Tauri desktop overlay and a separate translation API.
+
+An unofficial, independently developed companion; not affiliated with or endorsed by Capcom.
+Version 0.2.4 introduces the MHFZ-Z Translator Overlay name and hunter-inspired
+interface. Older releases retain their original names. Internal application IDs,
+storage keys, and the portable binary name remain unchanged for compatibility.
 
 ## Windows downloads and updates
 
@@ -14,8 +19,8 @@ or download/install updates. Visit GitHub Releases yourself to read what changed
 requirements, known limitations, and installation instructions for each version.
 
 To update, download the Windows x64 setup executable, finish your translation
-session, close Kotoba and its overlay, and run the installer yourself. For a
-portable installation, replace the executable while Kotoba is closed.
+session, close MHFZ-Z Translator Overlay and its dialogue overlay, and run the installer yourself.
+For a portable installation, replace the executable while the app is closed.
 
 ## First launch
 
@@ -71,13 +76,27 @@ pnpm install --frozen-lockfile
 pnpm --filter @workspace/api-server run dev
 ```
 
+### API regression tests
+
+Run `pnpm --filter @workspace/api-server test`. The cloud spending tests require
+PostgreSQL's `initdb` and `pg_ctl` on `PATH` (or set `POSTGRES_BIN` to their
+directory), a Unix-like environment, and a non-root user. Missing tools fail the
+suite explicitly rather than skipping the spending checks.
+
+The tests create and remove a temporary PostgreSQL cluster that accepts only
+local Unix-socket connections. They do not use `DATABASE_URL`, existing quota
+tables, or configured provider credentials. OpenAI is replaced with a synthetic
+provider. Separate route instances compete against the same real database to
+exercise the atomic daily reservation, including first-use and nearly exhausted
+allowances, UTC rollover, storage failures, and failed provider requests.
+
 ## Build and publish
 
 See [Windows build instructions](artifacts/kotoba-overlay/WINDOWS.md).
 
 - Push changes to `main` to build installer/portable artifacts using `windows-latest`.
-- Run **Build Kotoba Overlay for Windows x64** manually from the repository's Actions page for an on-demand build.
-- To publish an update, update the version in Tauri configuration and Cargo metadata, write `artifacts/kotoba-overlay/releases/vX.Y.Z.md`, then push a matching `vX.Y.Z` tag. A successful build creates a GitHub Release with both executables, those release-specific notes, and generated GitHub change history.
+- Run **Build MHFZ-Z Translator Overlay for Windows x64** manually from the repository's Actions page for an on-demand build.
+- To publish an update, update the version in Tauri configuration, Cargo metadata and Cargo.lock, write `artifacts/kotoba-overlay/releases/vX.Y.Z.md`, then push a matching `vX.Y.Z` tag. A successful build creates a GitHub Release with both executables, those release-specific notes, and generated GitHub change history.
 - Each release's notes must clearly describe **Changes**, **Windows downloads**, **Updating**, and **Requirements and known limitations**. The Windows workflow rejects missing/unfinished notes and mismatched Tauri/Cargo versions or release tags. Do not reuse an old version's notes for a new release.
 - Never commit API keys, service tokens, `.env` files, or signed credentials.
 

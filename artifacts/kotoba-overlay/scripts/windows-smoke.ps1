@@ -148,7 +148,7 @@ public static class KotobaSmokeWindows {
     $app = Start-Process -FilePath $exe -WorkingDirectory $InstallDirectory -PassThru
     $null = $app.Handle
     $report.processId = $app.Id
-    $main = Wait-For 'visible installed main window' { Get-AppWindows 'Kotoba Overlay' }
+    $main = Wait-For 'visible installed main window' { Get-AppWindows 'MHFZ-Z Translator Overlay' }
     $main = [IntPtr]$main
     Assert-Alive $main
     $report.checks += 'main-window-visible-and-responsive-10s'
@@ -156,7 +156,7 @@ public static class KotobaSmokeWindows {
     Set-Stage 'overlay-open'
     # Use a real accessible control: no injected JS, devtools, remote debugging, or test-only app mode.
     Invoke-Control $main 'Overlay window'
-    $overlay = Wait-For 'visible translation overlay' { Get-AppWindows 'Kotoba Translation Overlay' }
+    $overlay = Wait-For 'visible translation overlay' { Get-AppWindows 'MHFZ-Z Translator Overlay - Dialogue' }
     $overlay = [IntPtr]$overlay
     $null = Wait-For 'rendered overlay empty state' {
         Get-Control $overlay 'Japanese dialogue will appear here.'
@@ -169,7 +169,7 @@ public static class KotobaSmokeWindows {
 
     Set-Stage 'overlay-reuse'
     Invoke-Control $main 'Overlay window'
-    $windows = @(Get-AppWindows 'Kotoba Translation Overlay')
+    $windows = @(Get-AppWindows 'MHFZ-Z Translator Overlay - Dialogue')
     if ($windows.Count -ne 1 -or $windows[0] -ne $overlay) { throw 'Opening an existing overlay did not reuse the same window.' }
     $report.checks += 'overlay-reuses-existing-window'
 
@@ -178,7 +178,7 @@ public static class KotobaSmokeWindows {
     $null = Wait-For 'overlay to close via its UI' { -not [KotobaSmokeWindows]::IsWindow($overlay) }
     Assert-Alive $main 2
     Invoke-Control $main 'Overlay window'
-    $reopened = Wait-For 'overlay to reopen' { Get-AppWindows 'Kotoba Translation Overlay' }
+    $reopened = Wait-For 'overlay to reopen' { Get-AppWindows 'MHFZ-Z Translator Overlay - Dialogue' }
     $reopened = [IntPtr]$reopened
     $null = Wait-For 'reopened overlay content' { Get-Control $reopened 'Japanese dialogue will appear here.' }
     Assert-Alive $reopened 2
@@ -205,7 +205,7 @@ finally {
         } else {
             # Whitelist native window diagnostics instead of dumping arbitrary WebView contents.
             $report.windows = @(
-                foreach ($title in @('Kotoba Overlay', 'Kotoba Translation Overlay')) {
+                foreach ($title in @('MHFZ-Z Translator Overlay', 'MHFZ-Z Translator Overlay - Dialogue')) {
                     foreach ($handle in @(Get-AppWindows $title)) {
                         [ordered]@{
                             title = $title
