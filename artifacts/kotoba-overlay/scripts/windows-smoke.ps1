@@ -321,8 +321,8 @@ catch {
     # Only our error and exception type: no environment, UI tree, settings, profile, or credentials.
     $report.error = $_.Exception.Message
     $report.exceptionType = $_.Exception.GetType().FullName
-    if ($report.Contains('overlayResizeAfter')) {
-        Write-Host ("Resize final bounds: " + ($report.overlayResizeAfter | ConvertTo-Json -Compress))
+    if ($report.resizeCases.Count -gt 0) {
+        Write-Host ("Last resize evidence: " + ($report.resizeCases[-1] | ConvertTo-Json -Compress -Depth 8))
     }
     Write-Error -ErrorAction Continue "Windows smoke failed during '$($report.stage)': $($report.error)"
 }

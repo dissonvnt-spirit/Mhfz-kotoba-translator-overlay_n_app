@@ -3,6 +3,7 @@
 function Set-SmokeDisplay([ValidateSet(100, 125, 150, 200)][int]$ScalingPercent) {
     Add-Type -TypeDefinition @'
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 public static class KotobaSmokeDisplay {
     [StructLayout(LayoutKind.Sequential)]
@@ -37,6 +38,17 @@ public static class KotobaSmokeDisplay {
     static void Check(int result, string operation) {
         if (result != 0) throw new InvalidOperationException(operation + " failed (" + result + ").");
     }
+    public static string Modes() {
+        var sizes = new HashSet<string>();
+        IntPtr settings = Marshal.AllocHGlobal(220);
+        try {
+            for (int i = 0; i < 220; i++) Marshal.WriteByte(settings, i, 0);
+            Marshal.WriteInt16(settings, 68, 220);
+            for (int mode = 0; EnumDisplaySettings(null, mode, settings); mode++)
+                sizes.Add(Marshal.ReadInt32(settings, 172) + "x" + Marshal.ReadInt32(settings, 176));
+            return String.Join(", ", sizes);
+        } finally { Marshal.FreeHGlobal(settings); }
+    }
     public static string Configure(int percent) {
         // Room for every overlay target/endpoint at 200%. The main window may
         // exceed the work area's height at its 620-logical-pixel minimum; its
@@ -48,10 +60,10 @@ public static class KotobaSmokeDisplay {
             if (!EnumDisplaySettings(null, -1, settings)) throw new InvalidOperationException("Cannot read display mode.");
             Marshal.WriteInt32(settings, 72, 0x00080000 | 0x00100000); // DM_PELSWIDTH | DM_PELSHEIGHT
             Marshal.WriteInt32(settings, 172, 1920);
-            Marshal.WriteInt32(settings, 176, 1080);
-            Check(ChangeDisplaySettingsEx(null, settings, IntPtr.Zero, 0, IntPtr.Zero), "Set 1920x1080 desktop");
+            Marshal.WriteInt32(settings, 176, 1200);
+            Check(ChangeDisplaySettingsEx(null, settings, IntPtr.Zero, 0, IntPtr.Zero), "Set 1920x1200 desktop");
             if (!EnumDisplaySettings(null, -1, settings)) throw new InvalidOperationException("Cannot verify display mode.");
-            if (Marshal.ReadInt32(settings, 172) != 1920 || Marshal.ReadInt32(settings, 176) != 1080)
+            if (Marshal.ReadInt32(settings, 172) != 1920 || Marshal.ReadInt32(settings, 176) != 1200)
                 throw new InvalidOperationException("Desktop resolution did not take effect.");
         } finally { Marshal.FreeHGlobal(settings); }
         uint paths, modes;
@@ -71,18 +83,20 @@ public static class KotobaSmokeDisplay {
             // is the (negative) offset of 100%, not necessarily zero.
             int relative = Array.IndexOf(percentages, percent) + get.Minimum;
             if (relative < get.Minimum || relative > get.Maximum)
-                throw new InvalidOperationException("Requested scaling is unsupported by this display.");
+                throw new InvalidOperationException("Requested scaling is unsupported by this display: min=" +
+                    get.Minimum + "; current=" + get.Current + "; max=" + get.Maximum + "; requested=" + relative);
             var set = new ScaleSet { Header = get.Header, Relative = relative };
             set.Header.Type = -4;
             set.Header.Size = (uint)Marshal.SizeOf(typeof(ScaleSet));
             Check(DisplayConfigSetDeviceInfo(ref set), "Set per-display DPI scaling");
             Check(DisplayConfigGetDeviceInfo(ref get), "Verify per-display DPI scaling");
             if (get.Current != relative) throw new InvalidOperationException("Requested scaling did not take effect.");
-            return "1920x1080; requested=" + percent + "%; relative=" + relative;
+            return "1920x1200; requested=" + percent + "%; relative=" + relative;
         } finally { Marshal.FreeHGlobal(modeBuffer); }
     }
 }
 '@
+    Write-Host ("Supported desktop modes: " + [KotobaSmokeDisplay]::Modes())
     $configuration = [KotobaSmokeDisplay]::Configure($ScalingPercent)
     Start-Sleep -Seconds 3
     return $configuration
