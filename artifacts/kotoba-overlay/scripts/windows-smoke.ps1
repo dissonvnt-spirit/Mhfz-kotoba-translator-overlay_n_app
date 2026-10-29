@@ -61,7 +61,13 @@ using System.Text;
 public static class KotobaSmokeWindows {
     [StructLayout(LayoutKind.Sequential)]
     public struct Rect { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)]
+    public struct Point { public int X, Y; }
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out Rect rect);
+    [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hwnd, out Rect rect);
+    [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hwnd, ref Point point);
+    [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(Point point);
+    [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
     [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr hwnd);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
@@ -139,6 +145,16 @@ public static class KotobaSmokeWindows {
         $rect = New-Object KotobaSmokeWindows+Rect
         if (-not [KotobaSmokeWindows]::GetWindowRect($Handle, [ref]$rect)) { throw 'Could not read native overlay bounds.' }
         [ordered]@{ x = $rect.Left; y = $rect.Top; width = $rect.Right - $rect.Left; height = $rect.Bottom - $rect.Top }
+    }
+
+    function Get-ClientBounds([IntPtr]$Handle) {
+        $rect = New-Object KotobaSmokeWindows+Rect
+        $origin = New-Object KotobaSmokeWindows+Point
+        if (-not [KotobaSmokeWindows]::GetClientRect($Handle, [ref]$rect) -or
+            -not [KotobaSmokeWindows]::ClientToScreen($Handle, [ref]$origin)) {
+            throw 'Could not read overlay client bounds in physical screen coordinates.'
+        }
+        [ordered]@{ x = $origin.X; y = $origin.Y; width = $rect.Right; height = $rect.Bottom }
     }
 
     function Drag-Mouse([int]$X, [int]$Y, [int]$Dx, [int]$Dy) {
@@ -247,9 +263,24 @@ public static class KotobaSmokeWindows {
 
     Set-Stage 'overlay-mouse-resize'
     $before = Get-Bounds $overlay
+    $client = Get-ClientBounds $overlay
+    $report.overlayResizeBefore = $before
+    $report.overlayClientBounds = $client
+    $point = New-Object KotobaSmokeWindows+Point
+    $point.X = $before.x + $before.width - 8
+    $point.Y = $before.y + $before.height - 8
+    $report.overlayResizeTarget = [ordered]@{
+        x = $point.X; y = $point.Y
+        rootIsOverlay = [KotobaSmokeWindows]::GetAncestor([KotobaSmokeWindows]::WindowFromPoint($point), 2) -eq $overlay
+    }
+    Write-Host ("Resize geometry: " + (([ordered]@{
+        dpi = $report.overlayDpi; outer = $before; client = $client; target = $report.overlayResizeTarget
+    }) | ConvertTo-Json -Compress -Depth 4))
+    Save-Report
     Drag-Mouse ($before.x + $before.width - 8) ($before.y + $before.height - 8) 80 60
     $null = Wait-For 'overlay to grow using its resize grip' {
         $after = Get-Bounds $overlay
+        $report.overlayResizeAfter = $after
         $after.width -ge ($before.width + 30) -and $after.height -ge ($before.height + 20)
     }
     $report.overlayResizedBounds = Get-Bounds $overlay
@@ -283,6 +314,9 @@ catch {
     # Only our error and exception type: no environment, UI tree, settings, profile, or credentials.
     $report.error = $_.Exception.Message
     $report.exceptionType = $_.Exception.GetType().FullName
+    if ($report.Contains('overlayResizeAfter')) {
+        Write-Host ("Resize final bounds: " + ($report.overlayResizeAfter | ConvertTo-Json -Compress))
+    }
     Write-Error -ErrorAction Continue "Windows smoke failed during '$($report.stage)': $($report.error)"
 }
 finally {
