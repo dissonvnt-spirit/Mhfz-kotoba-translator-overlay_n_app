@@ -36,6 +36,7 @@ test('native smoke requires all directions, real mouse growth, minimum enforceme
   assert.match(resize, /\$after\.width -ge \$before\.width \+ 30 \* \$scale/);
   assert.match(resize, /\$after\.height -ge \$before\.height \+ 20 \* \$scale/);
   assert.match(resize, /Test-OverlayResizeAnchors \$before \$after \$direction/);
+  assert.match(resize, /Test-OverlayResizeMinimum \$operation.outerAfter \$direction \$dpi \$tolerance/);
   assert.match(app, /minWidth: 360,\s+minHeight: 170/);
   assert.match(resize, /\$before\.width - 360 \* \$scale \+ 40 \* \$scale/);
   assert.match(resize, /\$before\.height - 170 \* \$scale \+ 40 \* \$scale/);

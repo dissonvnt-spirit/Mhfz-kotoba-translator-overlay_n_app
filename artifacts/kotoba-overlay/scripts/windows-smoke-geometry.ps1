@@ -41,3 +41,11 @@ function Test-OverlayResizeAnchors($Before, $After, [string]$Direction, [int]$To
     if ($Direction -notmatch 'North|South' -and [Math]::Abs($After.height - $Before.height) -gt $Tolerance) { return $false }
     return $true
 }
+
+function Test-OverlayResizeMinimum($NativeOuter, [string]$Direction, [uint32]$Dpi, [int]$Tolerance = 3) {
+    $scale = $Dpi / 96.0
+    return ($NativeOuter.width -ge (360 * $scale - $Tolerance) -and
+        $NativeOuter.height -ge (170 * $scale - $Tolerance) -and
+        ($Direction -notmatch 'East|West' -or [Math]::Abs($NativeOuter.width - 360 * $scale) -le $Tolerance) -and
+        ($Direction -notmatch 'North|South' -or [Math]::Abs($NativeOuter.height - 170 * $scale) -le $Tolerance))
+}

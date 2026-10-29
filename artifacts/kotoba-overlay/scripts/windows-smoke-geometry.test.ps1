@@ -73,3 +73,15 @@ foreach ($direction in @('North', 'South', 'East', 'West', 'NorthEast', 'NorthWe
 Assert-Equal (Test-OverlayResizeAnchors $before @{ x = 200; y = 200; width = 560; height = 240 } 'East') $false
 Assert-Equal (Test-OverlayResizeAnchors $before @{ x = 200; y = 200; width = 490; height = 290 } 'South') $false
 Write-Host 'Windows overlay anchored-edge checks passed (supplemental, not native mouse evidence).'
+
+# Windows' undecorated minimum constrains the native outer rectangle, not the
+# client area used for mouse targeting. Never hide frame differences in tolerance.
+foreach ($dpi in @(96, 120, 144, 192)) {
+    $scale = $dpi / 96.0
+    $minimum = @{ width = [int][Math]::Ceiling(360 * $scale); height = [int][Math]::Ceiling(170 * $scale) }
+    Assert-Equal (Test-OverlayResizeMinimum $minimum 'NorthWest' $dpi) $true
+    Assert-Equal (Test-OverlayResizeMinimum @{ width = $minimum.width; height = $minimum.height - 10 } 'NorthWest' $dpi) $false
+    Assert-Equal (Test-OverlayResizeMinimum @{ width = $minimum.width; height = $minimum.height + 20 } 'SouthEast' $dpi) $false
+    Assert-Equal (Test-OverlayResizeMinimum @{ width = $minimum.width + 20; height = $minimum.height } 'West' $dpi) $false
+    Assert-Equal (Test-OverlayResizeMinimum @{ width = $minimum.width + 120; height = $minimum.height } 'North' $dpi) $true
+}

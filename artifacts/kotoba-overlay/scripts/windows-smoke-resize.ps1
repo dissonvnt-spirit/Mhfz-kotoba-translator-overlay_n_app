@@ -44,6 +44,7 @@ function Invoke-OverlayResizeChecks([IntPtr]$Overlay, [IntPtr]$Main, [int]$Scali
             $operation = [ordered]@{
                 action = $action; dpi = $dpi; scalingPercent = $dpi / 96.0 * 100
                 before = $before; outerBefore = Get-Bounds $Overlay
+                minimumNativeOuter = @{ width = 360 * $scale; height = 170 * $scale }
                 target = $target; delta = @{ x = $dx; y = $dy }
                 insideClient = Test-PointInBounds $target $before
                 rootIsOverlay = [KotobaSmokeWindows]::GetAncestor([KotobaSmokeWindows]::WindowFromPoint($point), 2) -eq $Overlay
@@ -61,10 +62,11 @@ function Invoke-OverlayResizeChecks([IntPtr]$Overlay, [IntPtr]$Main, [int]$Scali
                 $operation.outerAfter = Get-Bounds $Overlay
                 if (-not (Test-OverlayResizeAnchors $before $after $direction $tolerance)) { return $false }
                 if ($action -eq 'minimum') {
-                    return ($after.width -ge (360 * $scale - $tolerance) -and
-                        $after.height -ge (170 * $scale - $tolerance) -and
-                        ($sx -eq 0 -or [Math]::Abs($after.width - 360 * $scale) -le $tolerance) -and
-                        ($sy -eq 0 -or [Math]::Abs($after.height - 170 * $scale) -le $tolerance))
+                    # On Windows this undecorated Tao window clamps its OUTER
+                    # rectangle to the configured minimum. Client dimensions
+                    # exclude the invisible frame; do not loosen tolerance to
+                    # hide that difference or alter the app's existing limits.
+                    return Test-OverlayResizeMinimum $operation.outerAfter $direction $dpi $tolerance
                 }
                 return (($sx -eq 0 -or $after.width -ge $before.width + 30 * $scale) -and
                     ($sy -eq 0 -or $after.height -ge $before.height + 20 * $scale))
