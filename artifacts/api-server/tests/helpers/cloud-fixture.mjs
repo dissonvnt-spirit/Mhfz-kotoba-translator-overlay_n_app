@@ -176,7 +176,7 @@ export async function cloudServer(t, {
       // Express parser errors use HTML; do not add test-only error middleware.
       const responseBody = response.headers.get("content-type")?.includes("application/json")
         ? await response.json() : await response.text();
-      return { status: response.status, body: responseBody };
+      return { status: response.status, body: responseBody, headers: response.headers };
     },
   };
 }

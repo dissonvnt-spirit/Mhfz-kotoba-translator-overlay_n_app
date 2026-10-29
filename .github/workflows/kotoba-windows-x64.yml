@@ -76,6 +76,19 @@ jobs:
             exit $testExit
           }
 
+      - name: Verify local preparation and retry boundaries
+        run: pnpm --filter @workspace/kotoba-overlay run test:offline
+
+      - name: Verify safe Windows model diagnostics
+        shell: pwsh
+        run: |
+          & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+            -File artifacts/kotoba-overlay/scripts/offline-diagnostics.test.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify Windows resize target geometry
+        run: pnpm --filter @workspace/kotoba-overlay run test:windows-smoke
+
       - name: Build Windows installer
         shell: pwsh
         run: |
@@ -121,8 +134,8 @@ jobs:
 
       # Test the installed package, not the executable in the build directory.
       # This runner has no game or translation credentials: this is not a gameplay test.
-      - name: Smoke test Windows installation and overlay
-        timeout-minutes: 10
+      - name: Smoke test Windows installation, local model and overlay
+        timeout-minutes: 15
         shell: pwsh
         run: |
           # Windows PowerShell provides the desktop .NET UI Automation assemblies.

@@ -6,6 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './dialogueArchive';
+export * from './dialogueArchiveInput';
+export * from './dialogueArchiveReceipt';
+export * from './dialogueLine';
 export * from './healthStatus';
 export * from './translationInput';
 export * from './translationResult';

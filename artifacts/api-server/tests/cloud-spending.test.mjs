@@ -74,7 +74,8 @@ for (const outcome of ["resolve", "reject"]) {
       }
     };
     const assertBusy = async (reservations) => {
-      assert.deepEqual(await app.translate(), {
+      const { status, body } = await app.translate();
+      assert.deepEqual({ status, body }, {
         status: 429,
         body: { error: "Cloud translation is busy. Try again shortly or switch to offline." },
       });
@@ -158,7 +159,8 @@ for (const [label, configured, effectiveLimit] of [
       env: { KOTOBA_CLOUD_DAILY_LIMIT: configured },
     });
 
-    assert.deepEqual(await app.translate(), {
+    const { status, body } = await app.translate();
+    assert.deepEqual({ status, body }, {
       status: 200, body: { sourceText: "こんにちは", translatedText: "Hello." },
     });
     assert.equal(app.calls.length, 1);
@@ -302,7 +304,8 @@ for (const [label, body] of [
   test(`invalid dialogue with ${label} is rejected before quota storage or OpenAI`, async (t) => {
     // Cloud is enabled and consent is valid so only dialogue validation rejects.
     const app = await cloudServer(t, { storage });
-    assert.deepEqual(await app.translate({ body }), {
+    const { status, body: responseBody } = await app.translate({ body });
+    assert.deepEqual({ status, body: responseBody }, {
       status: 400,
       body: { error: "Enter between 1 and 2000 characters of dialogue." },
     });
@@ -360,7 +363,8 @@ for (const [label, rawBody, status] of [
 test("valid JSON at exactly the production 8192-byte limit consumes one reservation", async (t) => {
   const text = "あ".repeat(1999);
   const app = await cloudServer(t, { storage });
-  assert.deepEqual(await app.translate({ rawBody: jsonWithBytes(8192, text) }), {
+  const { status, body } = await app.translate({ rawBody: jsonWithBytes(8192, text) });
+  assert.deepEqual({ status, body }, {
     status: 200, body: { sourceText: text, translatedText: "Hello." },
   });
   assert.equal(app.storageLoads, 1);
@@ -373,7 +377,8 @@ for (const length of [1, 2000]) {
   test(`${length}-character dialogue is accepted and consumes exactly one reservation`, async (t) => {
     const text = "あ".repeat(length);
     const app = await cloudServer(t, { storage });
-    assert.deepEqual(await app.translate({ text }), {
+    const { status, body } = await app.translate({ text });
+    assert.deepEqual({ status, body }, {
       status: 200, body: { sourceText: text, translatedText: "Hello." },
     });
     assert.equal(app.storageLoads, 1);
@@ -386,10 +391,63 @@ for (const length of [1, 2000]) {
 
 test("successful translations consume exactly one reservation and return the expected contract", async (t) => {
   const app = await cloudServer(t, { storage });
-  assert.deepEqual(await app.translate(), {
+  const { status, body } = await app.translate();
+  assert.deepEqual({ status, body }, {
     status: 200, body: { sourceText: "こんにちは", translatedText: "Hello." },
   });
   assert.equal(app.calls.length, 1);
   assert.equal(app.calls[0].max_completion_tokens, 1200);
   assert.deepEqual(await usage(), [{ day: "2026-10-28", requests: 1 }]);
 });
+
+for (const scenario of [
+  {
+    label: "successful translation",
+    status: 200,
+    body: { sourceText: "こんにちは", translatedText: "Hello." },
+    providerCalls: 1,
+  },
+  {
+    label: "invalid dialogue",
+    options: { text: " \t\u3000" },
+    status: 400,
+    body: { error: "Enter between 1 and 2000 characters of dialogue." },
+    providerCalls: 0,
+  },
+  {
+    label: "missing consent",
+    options: { consent: null },
+    status: 400,
+    body: { error: "Choose cloud translation and accept its privacy prompt first." },
+    providerCalls: 0,
+  },
+  {
+    label: "exhausted allowance",
+    exhausted: true,
+    status: 429,
+    body: { error: "Today’s free cloud allowance is used up. Please use offline translation." },
+    providerCalls: 0,
+  },
+  {
+    label: "provider failure",
+    provider: async () => { throw new SyntheticProviderError(500); },
+    status: 503,
+    body: { error: "Cloud translation is temporarily unavailable. Please use offline translation." },
+    providerCalls: 1,
+  },
+]) {
+  test(`cloud responses forbid caching for ${scenario.label}`, async (t) => {
+    // Seed quota directly: no bursts, rate-limit timing, or concurrent requests.
+    if (scenario.exhausted) {
+      await storage.pool.query(
+        "INSERT INTO kotoba_cloud_usage (day, requests) VALUES ('2026-10-28', 3)",
+      );
+    }
+    const app = await cloudServer(t, { storage, provider: scenario.provider });
+    const { status, body, headers } = await app.translate(scenario.options);
+    assert.equal(status, scenario.status);
+    assert.deepEqual(body, scenario.body);
+    assert.equal(headers.get("cache-control"), "no-store");
+    assert.equal(app.calls.length, scenario.providerCalls);
+  });
+}

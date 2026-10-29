@@ -37,13 +37,30 @@ if (process.env.NODE_ENV === "development") {
 }
 app.use(cors({
   origin: (origin, callback) => callback(null, !!origin && desktopOrigins.has(origin)),
-  methods: ["GET", "POST"],
+  methods: ["GET", "POST", "DELETE"],
   allowedHeaders: ["Authorization", "Content-Type", "X-Kotoba-Cloud-Consent"],
   credentials: false,
 }));
-app.use(express.json({ limit: "8kb" }));
+// Only the archive endpoint accepts a larger structured import; translation
+// endpoints keep their original small request limit.
+app.use((req, res, next) => {
+  if (req.path === "/api/dialogue-archives" && req.method === "POST") { next(); return; }
+  express.json({ limit: "8kb" })(req, res, next);
+});
 app.use(express.urlencoded({ extended: true, limit: "8kb" }));
 
 app.use("/api", router);
+
+app.use((error: { type?: string; status?: number }, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (error.type === "entity.too.large") {
+    res.status(413).json({ error: "File/import is too large. Use at most 1 MiB per archive." });
+    return;
+  }
+  if (error.type === "entity.parse.failed") {
+    res.status(400).json({ error: "Invalid JSON request." });
+    return;
+  }
+  next(error);
+});
 
 export default app;

@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "MHFZ-Z Translator Overlay"
+description = "An unofficial Japanese-to-English game dialogue companion with a hunter-inspired interface, local OCR, offline-default translation, and optional consent-based cloud translation."
+version = "1.0.0"
+id = "artifacts/kotoba-overlay"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18492
+
+[services.development]
+run = "pnpm --filter @workspace/kotoba-overlay run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/kotoba-overlay", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/kotoba-overlay/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18492"
+BASE_PATH = "/"
