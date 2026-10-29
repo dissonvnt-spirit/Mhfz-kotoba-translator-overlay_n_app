@@ -6,7 +6,7 @@ This is a passion project, started by one guy with basic coding knowledge. Much 
 
 Source Code is completely public, feel free to reach out to me in regards to any feature requests that are sensible or if you notice any bugs/errors/mistakes in coding/application performance at my Discord @.spirit07
 
-#Overview
+## Overview
 
 Japanese-to-English dialogue translation companion for Windows x64, including a Tauri desktop overlay and a separate translation API.
 
