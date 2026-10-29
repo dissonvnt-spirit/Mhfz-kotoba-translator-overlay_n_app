@@ -109,6 +109,8 @@ jobs:
 
       - name: Verify Windows resize target geometry
         run: pnpm --filter @workspace/kotoba-overlay run test:windows-smoke
+      - name: Verify horizontal-only Japanese OCR and asset cleanup
+        run: pnpm --filter @workspace/kotoba-overlay run test:horizontal-ocr
 
       - name: Build Windows installer
         shell: pwsh

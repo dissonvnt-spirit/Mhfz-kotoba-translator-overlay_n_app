@@ -58,7 +58,6 @@ function Home() {
   const draft = manualForm.watch('text') ?? '';
   const apiBaseUrl = apiForm.watch('url') ?? '';
   const [captureState, setCaptureState] = useState<CaptureState>('idle');
-  const [ocrOrientation, setOcrOrientation] = useState<'horizontal' | 'vertical'>('horizontal');
   const [ocrRegion, setOcrRegion] = useState<OCRRegion | null>(null);
   const [draftRegion, setDraftRegion] = useState<OCRRegion | null>(null);
   const [selectingRegion, setSelectingRegion] = useState(false);
@@ -356,7 +355,7 @@ function Home() {
       setCaptureEvidence(current => ({ ...current, source: `${preview.videoWidth} × ${preview.videoHeight}`, stage: 'Video frame received. Loading local Japanese OCR assets.' }));
       phase = 'ocr-start';
       setOcrStatus('Loading Japanese OCR...');
-      const worker = await withCaptureDeadline(createWorker(ocrOrientation === 'vertical' ? 'jpn_vert' : 'jpn', undefined, {
+      const worker = await withCaptureDeadline(createWorker('jpn', undefined, {
         workerPath: new URL(`${import.meta.env.BASE_URL}ocr/worker.min.js`, window.location.href).href,
         corePath: new URL(`${import.meta.env.BASE_URL}ocr/`, window.location.href).href,
         langPath: new URL(`${import.meta.env.BASE_URL}ocr/`, window.location.href).href,
@@ -373,14 +372,15 @@ function Home() {
       }
       workerRef.current = worker;
       await withCaptureDeadline(worker.setParameters({
-        tessedit_pageseg_mode: ocrOrientation === 'vertical' ? PSM.SINGLE_BLOCK_VERT_TEXT : PSM.SINGLE_BLOCK,
+        // Fixed horizontal dialogue block: no vertical model or orientation detection.
+        tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
         user_defined_dpi: '150',
       }), 10_000, new CapturePipelineError('ocr-start', 'Japanese OCR settings could not initialize. Restart capture.'));
       if (session !== captureSessionRef.current) return;
       captureStateRef.current = 'capturing';
       setCaptureState('capturing');
       setOcrStatus('Reading Japanese dialogue automatically');
-      setCaptureEvidence(current => ({ ...current, stage: `Video and ${ocrOrientation} Japanese OCR are ready. Waiting for dialogue.` }));
+      setCaptureEvidence(current => ({ ...current, stage: 'Video and horizontal Japanese OCR are ready. Waiting for dialogue.' }));
 
       pollRef.current = window.setInterval(async () => {
         const video = videoRef.current;
@@ -809,18 +809,13 @@ function Home() {
                   <span className="border border-[hsl(var(--bronze)/.3)] px-2 py-1 text-[10px]">Window</span>
                 </div>
                 <div className="flex items-center justify-between gap-3 border-b border-[hsl(var(--bronze)/.15)] pb-3.5">
-                  <div><label htmlFor="ocr-orientation" className="text-xs font-semibold">Japanese text layout</label><p className="mt-0.5 text-[11px] text-[hsl(var(--muted-foreground))]">How dialogue is arranged</p></div>
-                  <select
-                    id="ocr-orientation"
-                    value={ocrOrientation}
-                    onChange={(event) => setOcrOrientation(event.target.value as 'horizontal' | 'vertical')}
-                    disabled={captureState !== 'idle' && captureState !== 'error'}
-                    className="field px-2 py-1.5 text-[11px] disabled:opacity-50"
-                    data-testid="select-ocr-orientation"
-                  >
-                    <option value="horizontal">Horizontal</option>
-                    <option value="vertical">Vertical</option>
-                  </select>
+                  <div><p className="text-xs font-semibold">Japanese text layout</p><p className="mt-0.5 text-[11px] text-[hsl(var(--muted-foreground))]">Left-to-right dialogue blocks</p></div>
+                  <span className="border border-[hsl(var(--bronze)/.3)] px-2 py-1 text-[10px]" data-testid="text-ocr-layout">Horizontal only</span>
+                </div>
+                <div className="border-b border-[hsl(var(--bronze)/.15)] pb-3.5">
+                  <p className="text-xs font-semibold">Target dialogue fonts</p>
+                  <p className="mt-1 break-words text-[11px] text-[hsl(var(--muted-foreground))]">MS Gothic (msgothic.ttc), Malgun Gothic (malgun.ttf), SimSun (simsun.ttc).</p>
+                  <p className="mt-1 text-[11px] text-[hsl(var(--muted-foreground))]">Uses standard Japanese OCR, not a font-restricted model.</p>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5"><span className="slot-icon"><Volume2 size={14} /></span><div><p className="text-xs font-semibold">Overlay preview</p><p className="mt-0.5 text-[11px] text-[hsl(var(--muted-foreground))]">Transparent companion view</p></div></div>

@@ -85,7 +85,7 @@ const summary = Object.fromEntries(['baseline-crop', 'line-ocr'].map(variant => 
 }));
 await writeFile(path.join(output, `${split}-results.json`), JSON.stringify({
   labelSource: manifest.labelSource,
-  targetFonts: manifest.targetFonts ?? ['MS Gothic', 'MS Mincho'],
+  targetFonts: manifest.targetFonts ?? ['MS Gothic', 'Malgun Gothic', 'SimSun'],
   sampleFontsVerified: manifest.sampleFontsVerified ?? false,
   summary, results,
 }, null, 2));

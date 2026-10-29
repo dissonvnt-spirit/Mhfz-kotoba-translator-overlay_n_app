@@ -12,6 +12,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:release-notes": "node --test scripts/release-notes.test.mjs",
     "test:windows-smoke": "node --test scripts/windows-smoke.test.mjs",
+    "test:horizontal-ocr": "node --test scripts/horizontal-ocr.test.mjs",
     "test:offline": "node --test scripts/offline-translation.test.mjs scripts/offline-runtime.test.mjs"
   },
   "devDependencies": {

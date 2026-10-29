@@ -2,6 +2,11 @@
 
 ## Scope and status
 
+> Historical evaluation of the earlier font targets. The current developer
+> target list is `msgothic.ttc`, `malgun.ttf`, and `simsun.ttc`; see
+> [horizontal dialogue OCR](horizontal-dialogue-ocr.md). This older evaluation
+> does not validate recognition of the new three-font target list.
+
 The developer identifies **MS Gothic Regular and MS Mincho Regular** as target
 dialogue fonts. The developer has withdrawn the custom-training and testing
 requirement and requests standard-font recognition instead. Additional samples,

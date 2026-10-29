@@ -1,4 +1,4 @@
-const { mkdirSync, existsSync, readFileSync, writeFileSync } = require('node:fs');
+const { mkdirSync, existsSync, readFileSync, writeFileSync, rmSync } = require('node:fs');
 const { createHash } = require('node:crypto');
 const path = require('node:path');
 const { runtimeDirectory, copyRuntime } = require('./offline-runtime.cjs');
@@ -12,9 +12,8 @@ async function prepare() {
   mkdirSync(ocrDestination, { recursive: true });
   const hashes = {
     jpn: '70304835d33b4feacf5faa60f56176578b64a03de2eeb0801539a3f6e7807ccc',
-    jpn_vert: 'b1bc920f21fbc1a72c1e60f4315a3e735d88eec30eae024326c726cbc6b33e99',
   };
-  for (const language of ['jpn', 'jpn_vert']) {
+  for (const language of ['jpn']) {
     const file = path.join(ocrDestination, `${language}.traineddata.gz`);
     let bytes;
     if (existsSync(file)) {
@@ -29,6 +28,10 @@ async function prepare() {
     }
     if (!existsSync(file)) writeFileSync(file, bytes);
   }
-  console.log('Prepared local ONNX runtime and Japanese OCR language data.');
+  // Clean old generated assets as well as preventing fresh vertical downloads.
+  for (const obsolete of ['jpn_vert.traineddata.gz', 'jpn_vert.traineddata']) {
+    rmSync(path.join(ocrDestination, obsolete), { force: true });
+  }
+  console.log('Prepared local ONNX runtime and horizontal Japanese OCR language data.');
 }
 prepare().catch((error) => { console.error(error); process.exitCode = 1; });
