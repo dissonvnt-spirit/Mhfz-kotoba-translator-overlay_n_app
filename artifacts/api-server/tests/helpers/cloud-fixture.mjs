@@ -29,6 +29,18 @@ const appBundle = await build({
   plugins: [{
     name: "isolated-quota-storage",
     setup(builder) {
+      // Keep app.ts's production middleware, parser, and error handling while
+      // mounting only the real cloud router. Unrelated routes (notably archive
+      // startup) must not eagerly load storage or mask cloud's lazy-load guard.
+      builder.onResolve({ filter: /^\.\/routes$/ }, (args) => {
+        if (args.importer !== new URL("../../src/app.ts", import.meta.url).pathname) return;
+        return { path: "cloud-router", namespace: "cloud-test" };
+      });
+      builder.onLoad({ filter: /.*/, namespace: "cloud-test" }, () => ({
+        contents: 'export { default } from "./routes/cloud-translate";',
+        resolveDir: new URL("../../src/", import.meta.url).pathname,
+        loader: "js",
+      }));
       builder.onResolve({ filter: /^@workspace\/db$/ }, () => ({
         path: "quota-storage", namespace: "test",
       }));
@@ -173,10 +185,10 @@ export async function cloudServer(t, {
         body: Object.hasOwn(options, "rawBody") ? options.rawBody : JSON.stringify(body),
         signal: AbortSignal.timeout(10_000),
       });
-      // Express parser errors use HTML; do not add test-only error middleware.
+      // Read the production response as-is; never add test-only error middleware.
       const responseBody = response.headers.get("content-type")?.includes("application/json")
         ? await response.json() : await response.text();
-      return { status: response.status, body: responseBody };
+      return { status: response.status, body: responseBody, headers: response.headers };
     },
   };
 }

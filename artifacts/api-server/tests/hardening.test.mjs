@@ -3,23 +3,75 @@ import { createRequire } from "node:module";
 import { after, before, test } from "node:test";
 import { build } from "esbuild";
 
-// Bundle the actual app without opening its production listener or using any
-// configured credentials. Invalid bodies ensure no provider calls can occur.
-process.env.NODE_ENV = "production";
-process.env.LOG_LEVEL = "silent";
-process.env.KOTOBA_API_TOKEN = "test-only-service-token-".repeat(2);
-delete process.env.OPENAI_API_KEY;
-globalThis.require = createRequire(import.meta.url);
-const { outputFiles } = await build({
+// Keep the real app/router/middleware, but never import the database entrypoint:
+// archive routes eagerly import it, pulling drizzle-zod schema initialization
+// into this CJS bundle (which previously failed with "Class2 is not a constructor").
+// No database or paid-provider implementation belongs in this middleware suite.
+const require = createRequire(import.meta.url);
+const serviceToken = "test-only-service-token-".repeat(2);
+const isolatedProcess = Object.create(process);
+isolatedProcess.env = {
+  NODE_ENV: "production",
+  LOG_LEVEL: "silent",
+  KOTOBA_API_TOKEN: serviceToken,
+};
+let storageCalls = 0;
+let providerCalls = 0;
+const forbiddenStorage = new Proxy({}, {
+  get() {
+    storageCalls++;
+    throw new Error("Database access is forbidden in hardening tests");
+  },
+});
+const storage = {
+  db: forbiddenStorage,
+  dialogueArchiveDb: forbiddenStorage,
+  dialogueArchivesTable: forbiddenStorage,
+  dialogueArchiveUsageTable: forbiddenStorage,
+  cloudUsageTable: forbiddenStorage,
+};
+class ForbiddenProvider {
+  static APIError = class extends Error {};
+  constructor() {
+    providerCalls++;
+    throw new Error("Paid provider access is forbidden in hardening tests");
+  }
+}
+const { outputFiles, metafile } = await build({
   entryPoints: [new URL("../src/app.ts", import.meta.url).pathname],
   bundle: true,
   platform: "node",
   format: "cjs",
   write: false,
+  metafile: true,
+  external: ["hardening-test-storage", "openai", "express", "express-rate-limit", "pino", "pino-http"],
+  plugins: [{
+    name: "isolated-hardening-storage",
+    setup(builder) {
+      builder.onResolve({ filter: /^@workspace\/db$/ }, () => ({
+        path: "storage", namespace: "hardening-test",
+      }));
+      builder.onLoad({ filter: /.*/, namespace: "hardening-test" }, () => ({
+        contents: 'module.exports = require("hardening-test-storage");',
+        loader: "js",
+      }));
+      // Fail at build time if a future import bypasses the storage boundary.
+      builder.onLoad({ filter: /[\\/]lib[\\/]db[\\/]|[\\/]node_modules[\\/](?:pg|pg-pool|drizzle-zod)[\\/]/ }, () => {
+        throw new Error("Live database implementation must not enter the hardening bundle");
+      });
+    },
+  }],
 });
 const appModule = { exports: {} };
-new Function("require", "module", "exports", outputFiles[0].text)(
-  globalThis.require, appModule, appModule.exports,
+const runtimeDependencies = new Set(["express", "express-rate-limit", "pino", "pino-http"]);
+new Function("require", "module", "exports", "process", outputFiles[0].text)(
+  (id) => {
+    if (id === "hardening-test-storage") return storage;
+    if (id === "openai") return ForbiddenProvider;
+    if (id.startsWith("node:") || runtimeDependencies.has(id)) return require(id);
+    throw new Error(`Unexpected hardening runtime dependency: ${id}`);
+  },
+  appModule, appModule.exports, isolatedProcess,
 );
 const app = appModule.exports.default;
 let server;
@@ -35,9 +87,16 @@ before(async () => {
 });
 
 after(async () => {
-  await new Promise((resolve, reject) =>
-    server.close((error) => error ? reject(error) : resolve()),
-  );
+  try {
+    await new Promise((resolve, reject) =>
+      server.close((error) => error ? reject(error) : resolve()),
+    );
+  } finally {
+    // Routes catch storage/provider exceptions; make attempted calls fail the
+    // suite even if production error handling converted them into an HTTP 503.
+    assert.equal(storageCalls, 0, "hardening requests must not access storage");
+    assert.equal(providerCalls, 0, "hardening requests must not construct a paid provider");
+  }
 });
 
 async function translate(ip, headers = {}, body = "{}") {
@@ -53,6 +112,20 @@ async function translate(ip, headers = {}, body = "{}") {
   await response.arrayBuffer();
   return response;
 }
+
+test("hardening runs without configured credentials, database code, or a paid SDK", () => {
+  assert.deepEqual(Object.keys(isolatedProcess.env).sort(), [
+    "KOTOBA_API_TOKEN", "LOG_LEVEL", "NODE_ENV",
+  ]);
+  const inputs = Object.keys(metafile.inputs);
+  assert.ok(inputs.some((path) => path.endsWith("/routes/dialogue-archives.ts")),
+    "the real archive router must remain mounted");
+  assert.ok(inputs.some((path) => path.endsWith("/routes/cloud-translate.ts")),
+    "the real cloud router must remain mounted");
+  for (const path of inputs) {
+    assert.doesNotMatch(path, /(?:^|\/)lib\/db\/|node_modules\/(?:pg|pg-pool|drizzle-zod|openai)\//);
+  }
+});
 
 test("arbitrary, null, lookalike, and dev browser origins get no CORS permission", async () => {
   for (const origin of [
@@ -97,7 +170,7 @@ test("packaged desktop origins can preflight and send authenticated requests", a
     assert.ok(preflight.headers.get("vary").includes("Origin"));
     const response = await translate("192.0.2.8", {
       origin,
-      authorization: `Bearer ${process.env.KOTOBA_API_TOKEN}`,
+      authorization: `Bearer ${serviceToken}`,
     });
     assert.equal(response.status, 400);
     assert.equal(response.headers.get("access-control-allow-origin"), origin);
@@ -127,7 +200,7 @@ test("native/same-origin requests still require auth and validate input", async 
     authorization: "Bearer incorrect-token",
   })).status, 401);
   assert.equal((await translate("192.0.2.2", {
-    authorization: `Bearer ${process.env.KOTOBA_API_TOKEN}`,
+    authorization: `Bearer ${serviceToken}`,
   })).status, 400);
 });
 
@@ -143,7 +216,7 @@ test("failed auth consumes quota, throttles at 61, and clients have separate buc
   assert.equal((await translate("192.0.2.4")).status, 401);
   // Even a valid token cannot bypass the exhausted IP quota.
   assert.equal((await translate("192.0.2.3", {
-    authorization: `Bearer ${process.env.KOTOBA_API_TOKEN}`,
+    authorization: `Bearer ${serviceToken}`,
   })).status, 429);
 });
 

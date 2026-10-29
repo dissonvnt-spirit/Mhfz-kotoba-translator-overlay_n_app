@@ -20,6 +20,9 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  DialogueArchive,
+  DialogueArchiveInput,
+  DialogueArchiveReceipt,
   HealthStatus,
   TranslationInput,
   TranslationResult
@@ -51,6 +54,246 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getCreateDialogueArchiveUrl = () => {
+
+
+
+
+  return `/api/dialogue-archives`
+}
+
+/**
+ * Uploads share a persistent service-wide allowance of 100 archives and 16 MiB of stored dialogue per UTC day, in addition to the per-address throttle of five attempts per hour. Deleting an archive does not refund the daily allowance. The 512 MiB / 10,000 archive storage cap also applies. Database acquisition, statement, or lock timeouts fail closed with 503. All archive responses forbid caching; recovery codes remain private.
+ * @summary Store a private compiled dialogue archive after explicit consent
+ */
+export const createDialogueArchive = async (dialogueArchiveInput: DialogueArchiveInput, options?: Parameters<typeof customFetch>[1]): Promise<DialogueArchiveReceipt> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<DialogueArchiveReceipt>(getCreateDialogueArchiveUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(dialogueArchiveInput)
+  }
+);}
+
+
+
+
+
+export const getCreateDialogueArchiveMutationKey = () => ['createDialogueArchive'] as const;
+
+export const getCreateDialogueArchiveMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDialogueArchive>>, TError,CreateDialogueArchiveMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createDialogueArchive>>, TError,CreateDialogueArchiveMutationVariables, TContext> => {
+
+const mutationKey = getCreateDialogueArchiveMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createDialogueArchive>>, CreateDialogueArchiveMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createDialogueArchive(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateDialogueArchiveMutationResult = NonNullable<Awaited<ReturnType<typeof createDialogueArchive>>>
+    export type CreateDialogueArchiveMutationBody = BodyType<DialogueArchiveInput>
+    export type CreateDialogueArchiveMutationError = ErrorType<void>
+    export type CreateDialogueArchiveMutationVariables = {data: BodyType<DialogueArchiveInput>}
+
+    /**
+ * @summary Store a private compiled dialogue archive after explicit consent
+ */
+export const useCreateDialogueArchive = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDialogueArchive>>, TError,CreateDialogueArchiveMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createDialogueArchive>>,
+        TError,
+        CreateDialogueArchiveMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateDialogueArchiveMutationOptions(options));
+    }
+
+export const getRetrieveDialogueArchiveUrl = () => {
+
+
+
+
+  return `/api/dialogue-archives`
+}
+
+/**
+ * @summary Retrieve an archive using its private recovery code
+ */
+export const retrieveDialogueArchive = async ( options?: Parameters<typeof customFetch>[1]): Promise<DialogueArchive> => {
+
+  return customFetch<DialogueArchive>(getRetrieveDialogueArchiveUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getRetrieveDialogueArchiveQueryKey = () => {
+    return [
+    `/api/dialogue-archives`
+    ] as const;
+    }
+
+
+export const getRetrieveDialogueArchiveQueryOptions = <TData = Awaited<ReturnType<typeof retrieveDialogueArchive>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof retrieveDialogueArchive>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getRetrieveDialogueArchiveQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof retrieveDialogueArchive>>> = ({ signal }) => retrieveDialogueArchive({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof retrieveDialogueArchive>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type RetrieveDialogueArchiveQueryResult = NonNullable<Awaited<ReturnType<typeof retrieveDialogueArchive>>>
+export type RetrieveDialogueArchiveQueryError = ErrorType<void>
+
+
+/**
+ * @summary Retrieve an archive using its private recovery code
+ */
+
+export function useRetrieveDialogueArchive<TData = Awaited<ReturnType<typeof retrieveDialogueArchive>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof retrieveDialogueArchive>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getRetrieveDialogueArchiveQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getDeleteDialogueArchiveUrl = () => {
+
+
+
+
+  return `/api/dialogue-archives`
+}
+
+/**
+ * @summary Permanently delete a server archive using its recovery code
+ */
+export const deleteDialogueArchive = async ( options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getDeleteDialogueArchiveUrl(),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteDialogueArchiveMutationKey = () => ['deleteDialogueArchive'] as const;
+
+export const getDeleteDialogueArchiveMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteDialogueArchive>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteDialogueArchive>>, TError,void, TContext> => {
+
+const mutationKey = getDeleteDialogueArchiveMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteDialogueArchive>>, void> = () => {
+
+
+          return  deleteDialogueArchive(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteDialogueArchiveMutationResult = NonNullable<Awaited<ReturnType<typeof deleteDialogueArchive>>>
+
+    export type DeleteDialogueArchiveMutationError = ErrorType<void>
+
+
+    /**
+ * @summary Permanently delete a server archive using its recovery code
+ */
+export const useDeleteDialogueArchive = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteDialogueArchive>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteDialogueArchive>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getDeleteDialogueArchiveMutationOptions(options));
+    }
 
 export const getHealthCheckUrl = () => {
 

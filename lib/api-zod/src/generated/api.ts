@@ -9,6 +9,68 @@ import * as zod from 'zod';
 
 
 /**
+ * Uploads share a persistent service-wide allowance of 100 archives and 16 MiB of stored dialogue per UTC day, in addition to the per-address throttle of five attempts per hour. Deleting an archive does not refund the daily allowance. The 512 MiB / 10,000 archive storage cap also applies. Database acquisition, statement, or lock timeouts fail closed with 503. All archive responses forbid caching; recovery codes remain private.
+ * @summary Store a private compiled dialogue archive after explicit consent
+ */
+export const createDialogueArchiveBodyTitleMax = 120;
+
+export const createDialogueArchiveBodyLinesItemSourceTextMax = 4000;
+
+export const createDialogueArchiveBodyLinesItemTranslatedTextMax = 4000;
+
+export const createDialogueArchiveBodyLinesItemTimestampMin = 0;
+export const createDialogueArchiveBodyLinesItemTimestampMax = 8640000000000000;
+
+export const createDialogueArchiveBodyLinesMax = 500;
+
+
+
+export const CreateDialogueArchiveBody = zod.object({
+  "title": zod.string().min(1).max(createDialogueArchiveBodyTitleMax),
+  "consent": zod.literal(true),
+  "lines": zod.array(zod.object({
+  "sourceText": zod.string().min(1).max(createDialogueArchiveBodyLinesItemSourceTextMax),
+  "translatedText": zod.string().min(1).max(createDialogueArchiveBodyLinesItemTranslatedTextMax),
+  "timestamp": zod.int().min(createDialogueArchiveBodyLinesItemTimestampMin).max(createDialogueArchiveBodyLinesItemTimestampMax)
+})).min(1).max(createDialogueArchiveBodyLinesMax)
+})
+
+export const CreateDialogueArchiveResponse = zod.object({
+  "recoveryCode": zod.string(),
+  "lineCount": zod.int()
+})
+
+
+/**
+ * @summary Retrieve an archive using its private recovery code
+ */
+export const retrieveDialogueArchiveResponseLinesItemSourceTextMax = 4000;
+
+export const retrieveDialogueArchiveResponseLinesItemTranslatedTextMax = 4000;
+
+export const retrieveDialogueArchiveResponseLinesItemTimestampMin = 0;
+export const retrieveDialogueArchiveResponseLinesItemTimestampMax = 8640000000000000;
+
+
+
+export const RetrieveDialogueArchiveResponse = zod.object({
+  "title": zod.string(),
+  "createdAt": zod.string(),
+  "lines": zod.array(zod.object({
+  "sourceText": zod.string().min(1).max(retrieveDialogueArchiveResponseLinesItemSourceTextMax),
+  "translatedText": zod.string().min(1).max(retrieveDialogueArchiveResponseLinesItemTranslatedTextMax),
+  "timestamp": zod.int().min(retrieveDialogueArchiveResponseLinesItemTimestampMin).max(retrieveDialogueArchiveResponseLinesItemTimestampMax)
+}))
+})
+
+
+/**
+ * @summary Permanently delete a server archive using its recovery code
+ */
+export const DeleteDialogueArchiveResponse = zod.void()
+
+
+/**
  * Returns server health status
  * @summary Health check
  */

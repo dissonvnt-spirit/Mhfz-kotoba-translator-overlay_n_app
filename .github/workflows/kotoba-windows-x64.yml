@@ -76,6 +76,19 @@ jobs:
             exit $testExit
           }
 
+      - name: Verify local preparation and retry boundaries
+        run: pnpm --filter @workspace/kotoba-overlay run test:offline
+
+      - name: Verify safe Windows model diagnostics
+        shell: pwsh
+        run: |
+          & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+            -File artifacts/kotoba-overlay/scripts/offline-diagnostics.test.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify Windows resize target geometry
+        run: pnpm --filter @workspace/kotoba-overlay run test:windows-smoke
+
       - name: Build Windows installer
         shell: pwsh
         run: |
@@ -119,29 +132,6 @@ jobs:
           if ($bytes.Length -lt 256 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw "Installer is not a valid Windows executable." }
           Write-Host ("Installer ready: {0} ({1:N1} MB)" -f $installer.FullName, ($installer.Length / 1MB))
 
-      # Test the installed package, not the executable in the build directory.
-      # This runner has no game or translation credentials: this is not a gameplay test.
-      - name: Smoke test Windows installation and overlay
-        timeout-minutes: 10
-        shell: pwsh
-        run: |
-          # Windows PowerShell provides the desktop .NET UI Automation assemblies.
-          & powershell.exe -NoProfile -NonInteractive -STA -ExecutionPolicy Bypass `
-            -File artifacts/kotoba-overlay/scripts/windows-smoke.ps1 `
-            -BundleDirectory artifacts/kotoba-overlay/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis `
-            -InstallDirectory "$env:RUNNER_TEMP\Kotoba Smoke Install" `
-            -DiagnosticsDirectory "$env:RUNNER_TEMP/kotoba-smoke-diagnostics"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Upload Windows smoke diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-smoke-diagnostics
-          path: ${{ runner.temp }}/kotoba-smoke-diagnostics/smoke-result.json
-          if-no-files-found: ignore
-          retention-days: 7
-
       - uses: actions/upload-artifact@v4
         with:
           name: kotoba-overlay-windows-x64-installer
@@ -154,9 +144,50 @@ jobs:
           path: artifacts/kotoba-overlay/src-tauri/target/x86_64-pc-windows-msvc/release/kotoba-overlay.exe
           if-no-files-found: error
 
+  # One installed package, four isolated REAL desktop scale settings. Geometry
+  # unit cases above are supplemental and do not satisfy this release gate.
+  windows-controls:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        scaling: [100, 125, 150, 200]
+    name: Installed controls at ${{ matrix.scaling }}% DPI
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: kotoba-overlay-windows-x64-installer
+          path: smoke-bundle
+
+      # No game or translation credentials: this is not gameplay acceptance.
+      - name: Smoke test installation, local model and all resize directions
+        timeout-minutes: 20
+        shell: pwsh
+        run: |
+          # Windows PowerShell provides desktop .NET UI Automation assemblies.
+          & powershell.exe -NoProfile -NonInteractive -STA -ExecutionPolicy Bypass `
+            -File artifacts/kotoba-overlay/scripts/windows-smoke.ps1 `
+            -BundleDirectory smoke-bundle `
+            -InstallDirectory "$env:RUNNER_TEMP\Kotoba Smoke Install" `
+            -DiagnosticsDirectory "$env:RUNNER_TEMP/kotoba-smoke-diagnostics" `
+            -ScalingPercent ${{ matrix.scaling }}
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload scale-specific Windows smoke diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-smoke-diagnostics-${{ matrix.scaling }}
+          path: ${{ runner.temp }}/kotoba-smoke-diagnostics/smoke-result.json
+          if-no-files-found: error
+          retention-days: 7
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [build, windows-controls]
     runs-on: ubuntu-latest
     permissions:
       contents: write

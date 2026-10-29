@@ -1,18 +1,11 @@
-const { copyFileSync, mkdirSync, readdirSync, existsSync, readFileSync, writeFileSync } = require('node:fs');
+const { mkdirSync, existsSync, readFileSync, writeFileSync } = require('node:fs');
 const { createHash } = require('node:crypto');
-const { createRequire } = require('node:module');
 const path = require('node:path');
+const { runtimeDirectory, copyRuntime } = require('./offline-runtime.cjs');
 
 async function prepare() {
-  const transformersRequire = createRequire(require.resolve('@huggingface/transformers'));
-  const runtime = path.dirname(transformersRequire.resolve('onnxruntime-web'));
   const destination = path.resolve(__dirname, '../public/offline-runtime');
-  mkdirSync(destination, { recursive: true });
-  for (const name of readdirSync(runtime)) {
-    if (/^ort-wasm.*\.(?:wasm|mjs)$/.test(name)) {
-      copyFileSync(path.join(runtime, name), path.join(destination, name));
-    }
-  }
+  copyRuntime(runtimeDirectory(), destination);
   // Ship OCR language data as application assets too: a cached translation
   // model alone is not sufficient to read a game while offline.
   const ocrDestination = path.resolve(__dirname, '../public/ocr');

@@ -8,6 +8,9 @@
     "core:webview:allow-create-webview-window",
     "core:window:allow-close",
     "core:window:allow-set-always-on-top",
-    "core:window:allow-start-dragging"
+    "core:window:allow-start-dragging",
+    "core:window:allow-start-resize-dragging",
+    "core:window:allow-show",
+    "core:window:allow-set-focus"
   ]
 }

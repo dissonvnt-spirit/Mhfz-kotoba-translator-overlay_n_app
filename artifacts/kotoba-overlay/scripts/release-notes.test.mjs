@@ -46,7 +46,8 @@ test('native release versions match and upgrade identity remains stable', async 
   assert.ok(smoke.includes("Get-AppWindows 'MHFZ-Z Translator Overlay'"));
   assert.ok(smoke.includes("Get-AppWindows 'MHFZ-Z Translator Overlay - Dialogue'"));
   const emptyState = 'Japanese dialogue will appear here once the hunt begins.';
-  assert.ok(app.includes(emptyState), 'Smoke empty-state text must match the rendered companion window');
+  const overlay = await read('src/components/overlay-window.tsx');
+  assert.ok(overlay.includes(emptyState), 'Smoke empty-state text must match the rendered companion window');
   assert.equal(smoke.split(`Get-Control $overlay '${emptyState}'`).length - 1, 1);
   assert.equal(smoke.split(`Get-Control $reopened '${emptyState}'`).length - 1, 1);
 });

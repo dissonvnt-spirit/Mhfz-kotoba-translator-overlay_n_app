@@ -28,6 +28,10 @@ async function buildAll() {
     // - uses native modules and loads them dynamically (e.g. sharp)
     // - use path traversal to read files (e.g. @google-cloud/secret-manager loads sibling .proto files)
     external: [
+      // Zod's ESM initialization must stay native when used by both Orval and
+      // drizzle-zod. Bundling its circular modules can leave constructors unset.
+      "zod",
+      "zod/*",
       "*.node",
       "sharp",
       "better-sqlite3",

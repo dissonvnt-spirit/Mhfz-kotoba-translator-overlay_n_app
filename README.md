@@ -13,6 +13,10 @@ Download the latest installer from [GitHub Releases](https://github.com/dissonvn
 
 The installer is recommended. The portable app requires Microsoft Edge WebView2 Runtime. Builds are currently unsigned, so Windows may show a SmartScreen warning. Windows/game interaction has not yet been tested on a physical Windows machine.
 
+Clean-machine prerequisite testing is **not yet run**. The
+[WebView2 test checklist](artifacts/kotoba-overlay/WEBVIEW2-CHECKLIST.md)
+covers online setup, first launch, offline failure, and recovery.
+
 Updates and their release notes are provided exclusively through GitHub Releases.
 The app does not check for updates, display update notices, open an update page,
 or download/install updates. Visit GitHub Releases yourself to read what changed,
@@ -21,6 +25,39 @@ requirements, known limitations, and installation instructions for each version.
 To update, download the Windows x64 setup executable, finish your translation
 session, close MHFZ-Z Translator Overlay and its dialogue overlay, and run the installer yourself.
 For a portable installation, replace the executable while the app is closed.
+
+**If an update is incompatible:** read the
+[update compatibility and recovery notice](UPDATE-RECOVERY.md) before uninstalling
+or clearing data. It explains safe backups, what to report through the feedback
+widget/GitHub Issues, and when a clean install of a fixed/future version is an
+appropriate last resort. Native upgrade preservation remains unverified.
+
+### Dialogue backups and server archives (v0.2.5)
+
+Open **Dialogue journal → Backups and archive**. Choose **JSON**, **CSV**, or
+**TXT** to save a local file. JSON/CSV support re-import; TXT is a readable copy.
+Keep files outside the installation folder. Import several JSON/CSV files to
+compile/deduplicate them locally and merge them into the journal without replacing
+existing entries. The journal holds up to 500 lines and pauses translation at
+capacity until you export and clear it; files/archives are not silently truncated.
+
+Optionally give the compiled archive a title, explicitly consent to sending it
+to the displayed service, and upload it. Save its **recovery receipt** outside the
+app. Later, use that recovery code with the same service to fetch, export, merge,
+or permanently delete the archive. Anyone with the code can retrieve/delete it;
+operators can access stored dialogue. No codes are kept in local storage, no
+archive is publicly listed, and dialogue is never automatically uploaded.
+Maintain a local copy too. Imports and uploads are limited to 1 MiB and 500 unique
+lines per compiled archive; server uploads are limited to 5/hour per IP per
+server instance, with bounded database-wide storage (512 MiB/10,000 archives).
+
+Server operators must run the updated API with its `dialogue_archives` schema.
+The API accepts parsed dialogue records, not original file bytes. Archives are
+separate from cloud translation, are not used for AI training/translation, and
+remain until deleted using their code or removed by a service operator.
+Missing/full storage fails explicitly; it never reports a successful backup.
+The new source/release notes do not add these features to an already downloaded
+older installer.
 
 ## First launch
 
