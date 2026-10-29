@@ -11,6 +11,7 @@
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:release-notes": "node --test scripts/release-notes.test.mjs",
+    "test:windows-smoke": "node --test scripts/windows-smoke.test.mjs",
     "test:offline": "node --test scripts/offline-translation.test.mjs"
   },
   "devDependencies": {

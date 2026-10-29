@@ -48,6 +48,7 @@ function Wait-For([string]$Description, [scriptblock]$Probe, [int]$Seconds = 45)
 try {
     if ($env:OS -ne 'Windows_NT') { throw 'This smoke check requires Windows.' }
     . (Join-Path $PSScriptRoot 'offline-diagnostics.ps1')
+    . (Join-Path $PSScriptRoot 'windows-smoke-geometry.ps1')
     # PowerShell accepts mixed separators; NSIS parses /D itself and requires a
     # native Windows path. Do not pass a POSIX-style suffix to the installer.
     $InstallDirectory = [System.IO.Path]::GetFullPath($InstallDirectory).Replace('/', '\')
@@ -159,6 +160,8 @@ public static class KotobaSmokeWindows {
 
     function Drag-Mouse([int]$X, [int]$Y, [int]$Dx, [int]$Dy) {
         if (-not [KotobaSmokeWindows]::SetCursorPos($X, $Y)) { throw 'Could not position mouse for overlay control check.' }
+        # Let the WebView receive mousemove/hover before pressing the button.
+        Start-Sleep -Milliseconds 200
         [KotobaSmokeWindows]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
         try {
             # Give the WebView time to dispatch mousedown and enter native move/resize.
@@ -266,24 +269,39 @@ public static class KotobaSmokeWindows {
     $client = Get-ClientBounds $overlay
     $report.overlayResizeBefore = $before
     $report.overlayClientBounds = $client
+    $legacyTarget = [ordered]@{ x = $before.x + $before.width - 8; y = $before.y + $before.height - 8 }
+    $report.overlayLegacyResizeTarget = [ordered]@{
+        x = $legacyTarget.x; y = $legacyTarget.y
+        insideClient = Test-PointInBounds $legacyTarget $client
+    }
+    # GetWindowRect includes Windows' hidden frame/shadow, even without title
+    # decorations. CSS resize handlers live in the client area. Convert its
+    # 16 CSS px corner center to physical pixels using this window's DPI.
+    $target = Get-OverlayResizeTarget $client ([KotobaSmokeWindows]::GetDpiForWindow($overlay))
     $point = New-Object KotobaSmokeWindows+Point
-    $point.X = $before.x + $before.width - 8
-    $point.Y = $before.y + $before.height - 8
+    $point.X = $target.x
+    $point.Y = $target.y
     $report.overlayResizeTarget = [ordered]@{
         x = $point.X; y = $point.Y
+        insideClient = Test-PointInBounds $target $client
         rootIsOverlay = [KotobaSmokeWindows]::GetAncestor([KotobaSmokeWindows]::WindowFromPoint($point), 2) -eq $overlay
     }
     Write-Host ("Resize geometry: " + (([ordered]@{
-        dpi = $report.overlayDpi; outer = $before; client = $client; target = $report.overlayResizeTarget
+        dpi = $report.overlayDpi; outer = $before; client = $client
+        legacyTarget = $report.overlayLegacyResizeTarget; target = $report.overlayResizeTarget
     }) | ConvertTo-Json -Compress -Depth 4))
     Save-Report
-    Drag-Mouse ($before.x + $before.width - 8) ($before.y + $before.height - 8) 80 60
+    if (-not $report.overlayResizeTarget.insideClient -or -not $report.overlayResizeTarget.rootIsOverlay) {
+        throw 'Resize target is outside the overlay client area or covered by another window.'
+    }
+    Drag-Mouse $target.x $target.y 80 60
     $null = Wait-For 'overlay to grow using its resize grip' {
         $after = Get-Bounds $overlay
         $report.overlayResizeAfter = $after
         $after.width -ge ($before.width + 30) -and $after.height -ge ($before.height + 20)
     }
     $report.overlayResizedBounds = Get-Bounds $overlay
+    Write-Host ("Resize final bounds: " + ($report.overlayResizedBounds | ConvertTo-Json -Compress))
     Assert-Alive $main 2
     $report.checks += 'overlay-resizes-with-mouse'
 
@@ -308,6 +326,7 @@ public static class KotobaSmokeWindows {
     $report.checks += 'overlay-closes-and-reopens-with-main-surviving'
     $report.status = 'passed'
     Set-Stage 'complete'
+    Write-Host ("Completed checks: " + ($report.checks -join ', '))
 }
 catch {
     $report.status = 'failed'

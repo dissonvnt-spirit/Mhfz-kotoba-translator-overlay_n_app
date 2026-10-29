@@ -86,6 +86,9 @@ jobs:
             -File artifacts/kotoba-overlay/scripts/offline-diagnostics.test.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Verify Windows resize target geometry
+        run: pnpm --filter @workspace/kotoba-overlay run test:windows-smoke
+
       - name: Build Windows installer
         shell: pwsh
         run: |
