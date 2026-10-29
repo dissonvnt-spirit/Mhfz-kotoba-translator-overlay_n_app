@@ -21,6 +21,27 @@ permissions:
   contents: read
 
 jobs:
+  rust-security:
+    name: Optimized GLib and Rust security regressions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: artifacts/kotoba-overlay/src-tauri -> target
+      - name: Verify dependency and backport guards
+        run: node --test artifacts/kotoba-overlay/scripts/rust-security.test.mjs
+      - name: Install GLib test development headers
+        run: sudo apt-get update && sudo apt-get install -y libglib2.0-dev
+      - name: Exercise optimized GLib iterator regressions
+        run: cargo test --locked --release --manifest-path artifacts/kotoba-overlay/src-tauri/Cargo.toml -p glib --lib variant_iter::tests
+      - name: Compile both migrated macro consumers
+        run: cargo check --locked --manifest-path artifacts/kotoba-overlay/src-tauri/Cargo.toml -p glib-macros -p gtk3-macros
+
   build:
     runs-on: windows-latest
     steps:
@@ -187,7 +208,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build, windows-controls]
+    needs: [build, windows-controls, rust-security]
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -1,6 +1,6 @@
 [package]
 name = "kotoba-overlay"
-version = "0.2.5"
+version = "0.2.6"
 description = "MHFZ-Z Translator Overlay — Japanese-to-English game dialogue translation"
 authors = ["MHFZ-Z Translator Overlay contributors"]
 edition = "2021"
@@ -14,3 +14,23 @@ tauri = { version = "2", features = [] }
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
+
+[workspace]
+resolver = "2"
+default-members = ["."]
+members = [
+  "vendor/glib-0.18.5",
+  "vendor/glib-macros-0.18.5",
+  "vendor/gtk3-macros-0.18.2",
+  "vendor/tauri-codegen-2.7.4",
+]
+exclude = [
+  "vendor/wry-0.57.1",
+]
+
+[patch.crates-io]
+tauri-codegen = { path = "vendor/tauri-codegen-2.7.4" }
+glib = { path = "vendor/glib-0.18.5" }
+glib-macros = { path = "vendor/glib-macros-0.18.5" }
+gtk3-macros = { path = "vendor/gtk3-macros-0.18.2" }
+wry = { path = "vendor/wry-0.57.1" }
