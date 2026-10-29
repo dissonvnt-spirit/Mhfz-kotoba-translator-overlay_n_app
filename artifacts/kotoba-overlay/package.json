@@ -7,12 +7,12 @@
     "dev": "node scripts/prepare-ocr.cjs && node scripts/prepare-offline.cjs && vite --config vite.config.ts --host 0.0.0.0",
     "desktop:dev": "tauri dev",
     "desktop:build:windows": "tauri build --target x86_64-pc-windows-msvc",
-    "build": "node scripts/prepare-ocr.cjs && node scripts/prepare-offline.cjs && vite build --config vite.config.ts",
+    "build": "node scripts/prepare-ocr.cjs && node scripts/prepare-offline.cjs && vite build --config vite.config.ts && node scripts/verify-offline-runtime.cjs",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:release-notes": "node --test scripts/release-notes.test.mjs",
     "test:windows-smoke": "node --test scripts/windows-smoke.test.mjs",
-    "test:offline": "node --test scripts/offline-translation.test.mjs"
+    "test:offline": "node --test scripts/offline-translation.test.mjs scripts/offline-runtime.test.mjs"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -81,7 +81,7 @@
     "zod": "catalog:"
   },
   "dependencies": {
-    "@huggingface/transformers": "^3.8.1",
+    "@huggingface/transformers": "3.8.1",
     "@tauri-apps/api": "^2.12.4",
     "tesseract.js": "^7.0.0"
   }

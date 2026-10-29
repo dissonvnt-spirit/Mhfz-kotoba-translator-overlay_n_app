@@ -1,7 +1,7 @@
 import path from 'path';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
-import { defineConfig } from 'vite';
+import { defaultClientConditions, defineConfig } from 'vite';
 
 import runtimeErrorOverlay from '@replit/vite-plugin-runtime-error-modal';
 
@@ -37,6 +37,10 @@ export default defineConfig({
       : []),
   ],
   resolve: {
+    // Use ORT's supported external-WASM export: wasmPaths in our worker loads
+    // the bundled public/offline-runtime pair. The default embedded-glue export
+    // makes Vite emit another ~21 MB WASM that wasmPaths never requests.
+    conditions: [...defaultClientConditions, 'onnxruntime-web-use-extern-wasm'],
     alias: {
       '@': path.resolve(import.meta.dirname, 'src'),
       '@assets': path.resolve(

@@ -231,7 +231,7 @@ importers:
   artifacts/kotoba-overlay:
     dependencies:
       '@huggingface/transformers':
-        specifier: ^3.8.1
+        specifier: 3.8.1
         version: 3.8.1(@types/node@25.9.6)
       '@tauri-apps/api':
         specifier: ^2.12.4
