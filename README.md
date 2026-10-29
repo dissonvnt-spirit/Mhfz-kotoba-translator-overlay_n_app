@@ -2,7 +2,7 @@
 
 Disclaimer: 
 
-This is a passion project, started by one guy with basic coding knowledge. Much of this app was made with the use of an AI Agent through the use of vibe coding where my skillset was insufficient. This is NOT crowd funded, all Ai usage is handled through my private OpenAi API key which I maintain, as such there are purposely implemented limits on daily usage by anyone other than me. The express purpose of this integration is for application cloud testing, Ai assisted translation in the event of local translation failure and local/server documentation of MHFZZ untranslated/translated dialogue.
+This is a passion project, started by one guy with limited coding knowledge. Much of this app was made with the use of an AI Agent through the use of vibe coding where my skillset was insufficient. This is NOT crowd funded, all Ai usage is handled through my private OpenAi API key which I maintain, as such there are purposely implemented limits on daily usage by anyone other than me. The express purpose of this integration is for application cloud testing, Ai assisted translation in the event of local translation failure and local/server documentation of MHFZZ untranslated/translated dialogue.
 
 Source Code is completely public, feel free to reach out to me in regards to any feature requests that are sensible or if you notice any bugs/errors/mistakes in coding/application performance at my Discord @.spirit07
 
