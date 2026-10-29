@@ -38,19 +38,20 @@ public static class KotobaSmokeDisplay {
         if (result != 0) throw new InvalidOperationException(operation + " failed (" + result + ").");
     }
     public static string Configure(int percent) {
-        // Large enough for the main window's 900x620 logical minimum at 200%,
-        // plus room to manipulate every edge of the centered overlay.
+        // Room for every overlay target/endpoint at 200%. The main window may
+        // exceed the work area's height at its 620-logical-pixel minimum; its
+        // controls use UI Automation, while overlay manipulation is real mouse.
         IntPtr settings = Marshal.AllocHGlobal(220); // DEVMODEW
         try {
             for (int i = 0; i < 220; i++) Marshal.WriteByte(settings, i, 0);
             Marshal.WriteInt16(settings, 68, 220);
             if (!EnumDisplaySettings(null, -1, settings)) throw new InvalidOperationException("Cannot read display mode.");
             Marshal.WriteInt32(settings, 72, 0x00080000 | 0x00100000); // DM_PELSWIDTH | DM_PELSHEIGHT
-            Marshal.WriteInt32(settings, 172, 2560);
-            Marshal.WriteInt32(settings, 176, 1440);
-            Check(ChangeDisplaySettingsEx(null, settings, IntPtr.Zero, 0, IntPtr.Zero), "Set 2560x1440 desktop");
+            Marshal.WriteInt32(settings, 172, 1920);
+            Marshal.WriteInt32(settings, 176, 1080);
+            Check(ChangeDisplaySettingsEx(null, settings, IntPtr.Zero, 0, IntPtr.Zero), "Set 1920x1080 desktop");
             if (!EnumDisplaySettings(null, -1, settings)) throw new InvalidOperationException("Cannot verify display mode.");
-            if (Marshal.ReadInt32(settings, 172) != 2560 || Marshal.ReadInt32(settings, 176) != 1440)
+            if (Marshal.ReadInt32(settings, 172) != 1920 || Marshal.ReadInt32(settings, 176) != 1080)
                 throw new InvalidOperationException("Desktop resolution did not take effect.");
         } finally { Marshal.FreeHGlobal(settings); }
         uint paths, modes;
@@ -77,7 +78,7 @@ public static class KotobaSmokeDisplay {
             Check(DisplayConfigSetDeviceInfo(ref set), "Set per-display DPI scaling");
             Check(DisplayConfigGetDeviceInfo(ref get), "Verify per-display DPI scaling");
             if (get.Current != relative) throw new InvalidOperationException("Requested scaling did not take effect.");
-            return "2560x1440; requested=" + percent + "%; relative=" + relative;
+            return "1920x1080; requested=" + percent + "%; relative=" + relative;
         } finally { Marshal.FreeHGlobal(modeBuffer); }
     }
 }

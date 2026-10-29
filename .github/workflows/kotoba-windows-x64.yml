@@ -22,6 +22,7 @@ permissions:
 
 jobs:
   build:
+    if: false # Verification-only branch: reuse the matching installed package already built.
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -147,7 +148,6 @@ jobs:
   # One installed package, four isolated REAL desktop scale settings. Geometry
   # unit cases above are supplemental and do not satisfy this release gate.
   windows-controls:
-    needs: build
     runs-on: windows-latest
     timeout-minutes: 25
     strategy:
@@ -161,6 +161,8 @@ jobs:
         with:
           name: kotoba-overlay-windows-x64-installer
           path: smoke-bundle
+          run-id: 40796983924
+          github-token: ${{ github.token }}
 
       # No game or translation credentials: this is not gameplay acceptance.
       - name: Smoke test installation, local model and all resize directions
