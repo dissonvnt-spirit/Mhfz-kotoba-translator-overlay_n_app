@@ -59,11 +59,11 @@ public static class KotobaSmokeDisplay {
             Marshal.WriteInt16(settings, 68, 220);
             if (!EnumDisplaySettings(null, -1, settings)) throw new InvalidOperationException("Cannot read display mode.");
             Marshal.WriteInt32(settings, 72, 0x00080000 | 0x00100000); // DM_PELSWIDTH | DM_PELSHEIGHT
-            Marshal.WriteInt32(settings, 172, 1920);
+            Marshal.WriteInt32(settings, 172, 1600);
             Marshal.WriteInt32(settings, 176, 1200);
-            Check(ChangeDisplaySettingsEx(null, settings, IntPtr.Zero, 0, IntPtr.Zero), "Set 1920x1200 desktop");
+            Check(ChangeDisplaySettingsEx(null, settings, IntPtr.Zero, 0, IntPtr.Zero), "Set 1600x1200 desktop");
             if (!EnumDisplaySettings(null, -1, settings)) throw new InvalidOperationException("Cannot verify display mode.");
-            if (Marshal.ReadInt32(settings, 172) != 1920 || Marshal.ReadInt32(settings, 176) != 1200)
+            if (Marshal.ReadInt32(settings, 172) != 1600 || Marshal.ReadInt32(settings, 176) != 1200)
                 throw new InvalidOperationException("Desktop resolution did not take effect.");
         } finally { Marshal.FreeHGlobal(settings); }
         uint paths, modes;
@@ -91,7 +91,7 @@ public static class KotobaSmokeDisplay {
             Check(DisplayConfigSetDeviceInfo(ref set), "Set per-display DPI scaling");
             Check(DisplayConfigGetDeviceInfo(ref get), "Verify per-display DPI scaling");
             if (get.Current != relative) throw new InvalidOperationException("Requested scaling did not take effect.");
-            return "1920x1200; requested=" + percent + "%; relative=" + relative;
+            return "1600x1200; requested=" + percent + "%; relative=" + relative;
         } finally { Marshal.FreeHGlobal(modeBuffer); }
     }
 }

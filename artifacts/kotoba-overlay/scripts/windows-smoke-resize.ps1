@@ -13,7 +13,7 @@ function Invoke-OverlayResizeChecks([IntPtr]$Overlay, [IntPtr]$Main, [int]$Scali
         # Keep all targets and drag endpoints on-screen, including at 200%.
         # Convert desired CLIENT size to outer size without assuming frame width.
         if (-not [KotobaSmokeWindows]::SetWindowPos($Overlay, [IntPtr]::Zero,
-            [int](240 * $scale), [int](180 * $scale),
+            [int](200 * $scale), [int](180 * $scale),
             [int](480 * $scale + $outer.width - $client.width),
             [int](230 * $scale + $outer.height - $client.height), 0x14)) {
             throw "Could not position fixture for $direction."
