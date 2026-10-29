@@ -1,13 +1,19 @@
 import { useState, type MouseEvent, type ReactNode } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Captions, Grip, Move, X } from 'lucide-react';
+import { TranslationReview } from '@/components/translation-review';
+import type { TranslationReview as Review } from '@/lib/dialogue-review';
 
 const resizeDirections = ['North', 'South', 'East', 'West', 'NorthEast', 'NorthWest', 'SouthEast', 'SouthWest'] as const;
 
-export function OverlayWindow({ desktop, crest, latest }: {
+export function OverlayWindow({ desktop, crest, latest, review, busy, onAccept, onRetry }: {
   desktop: boolean;
   crest: ReactNode;
   latest?: { sourceText: string; translatedText: string };
+  review: Review | null;
+  busy: boolean;
+  onAccept: (id: string) => void;
+  onRetry: (id: string) => void;
 }) {
   const [error, setError] = useState('');
 
@@ -44,7 +50,7 @@ export function OverlayWindow({ desktop, crest, latest }: {
             aria-label="Close overlay" title="Close overlay only; capture continues in the main window" data-testid="button-close-overlay"><X size={15} /></button>
         </header>
         <div className="overlay-content">
-          {latest ? (
+          {review ? <TranslationReview review={review} busy={busy} onAccept={onAccept} onRetry={onRetry} /> : latest ? (
             <div className="space-y-2.5" data-testid="overlay-latest-translation">
               <p className="font-jp text-base leading-relaxed text-[hsl(var(--parchment)/.72)]" lang="ja">{latest.sourceText}</p>
               <p className="border-l-2 border-[hsl(var(--ember))] pl-3 font-display text-lg font-semibold leading-relaxed">{latest.translatedText}</p>

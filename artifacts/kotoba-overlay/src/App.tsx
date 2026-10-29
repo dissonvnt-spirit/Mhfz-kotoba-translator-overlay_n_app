@@ -10,6 +10,8 @@ import { OfflineTranslator } from '@/lib/offline-translation';
 import { offlineFailureMessage } from '@/lib/offline-errors';
 import { DialogueBackups } from '@/components/dialogue-backups';
 import { OverlayWindow } from '@/components/overlay-window';
+import { TranslationReview } from '@/components/translation-review';
+import { approveReview, DialogueGate, type TranslationReview as Review } from '@/lib/dialogue-review';
 import { mergeDialogue } from '@/lib/dialogue-backup';
 import { TranslationOptions, type TranslationMode } from '@/components/translation-options';
 import { isTauri } from '@tauri-apps/api/core';
@@ -92,16 +94,30 @@ function Home() {
   const ocrRegionRef = useRef<OCRRegion | null>(ocrRegion);
   const processingFrameRef = useRef(false);
   const translatingRef = useRef(false);
-  const recentTextRef = useRef<string[]>([]);
+  const offlineBusyRef = useRef(offlineBusy);
+  offlineBusyRef.current = offlineBusy;
+  const dialogueGateRef = useRef(new DialogueGate());
+  const captureScopeRef = useRef(0);
+  const requestSequenceRef = useRef(0);
+  const [review, setReview] = useState<Review | null>(null);
+  const reviewRef = useRef<Review | null>(null);
+  const reviewActionsRef = useRef({ accept: (_id: string) => {}, retry: (_id: string) => {} });
+  const snapshotRef = useRef({ lines, review, busy: false });
+  snapshotRef.current = { lines, review, busy: translationBusy || offlineBusy };
   const captureSessionRef = useRef(0);
-  const retryTextRef = useRef<{ text: string; after: number } | null>(null);
   const overlayChannelRef = useRef<BroadcastChannel | null>(null);
   const openingOverlayRef = useRef(false);
   selectingRegionRef.current = selectingRegion;
   ocrRegionRef.current = ocrRegion;
 
+  const updateReview = (next: Review | null) => {
+    reviewRef.current = next;
+    snapshotRef.current = { ...snapshotRef.current, review: next };
+    setReview(next);
+  };
+
   useEffect(() => {
-    // The overlay is a read-only consumer; never overwrite the main journal
+    // Only the main window writes approved lines; never overwrite its journal
     // with a stale snapshot while a new overlay is opening.
     if (isOverlay) return;
     try {
@@ -109,25 +125,38 @@ function Home() {
     } catch {
       setTranslationError('The journal could not be saved on this device. Export a backup now before closing the app or clearing any data.');
     }
-    if (!isOverlay) {
-      overlayChannelRef.current?.postMessage({ type: 'sync-lines', lines });
-    }
   }, [lines]);
 
   useEffect(() => {
-    if (!isOverlay) return;
     const channel = new BroadcastChannel(OVERLAY_CHANNEL);
     overlayChannelRef.current = channel;
-    channel.onmessage = (event: MessageEvent<{ type?: string; lines?: DetectedLine[] }>) => {
-      if (event.data?.type === 'sync-lines' && Array.isArray(event.data.lines)) {
-        setLines(event.data.lines);
+    channel.onmessage = (event: MessageEvent) => {
+      const message = event.data;
+      if (isOverlay) {
+        if (message?.type !== 'sync-state' || !Array.isArray(message.lines)) return;
+        const incoming = message.review;
+        if (incoming !== null && (!incoming || typeof incoming.id !== 'string' ||
+          typeof incoming.sourceText !== 'string' ||
+          (incoming.translatedText !== null && typeof incoming.translatedText !== 'string') ||
+          !['pending', 'accepted', 'error', 'translating'].includes(incoming.status) ||
+          typeof incoming.timestamp !== 'number' ||
+          (incoming.error !== undefined && typeof incoming.error !== 'string'))) return;
+        setLines(message.lines);
+        updateReview(incoming);
+        setTranslationBusy(message.busy === true);
+      } else if (message?.type === 'request-state') {
+        channel.postMessage({ type: 'sync-state', ...snapshotRef.current });
+      } else if (typeof message?.id === 'string') {
+        if (message.type === 'accept-review') reviewActionsRef.current.accept(message.id);
+        if (message.type === 'retry-review') reviewActionsRef.current.retry(message.id);
       }
     };
+    if (isOverlay) channel.postMessage({ type: 'request-state' });
     const syncLines = (event: StorageEvent) => {
       if (event.key !== STORAGE_KEY || !event.newValue) return;
       try { setLines(JSON.parse(event.newValue) as DetectedLine[]); } catch { /* ignore malformed saved state */ }
     };
-    window.addEventListener('storage', syncLines);
+    if (isOverlay) window.addEventListener('storage', syncLines);
     return () => {
       window.removeEventListener('storage', syncLines);
       channel.close();
@@ -136,16 +165,8 @@ function Home() {
   }, [isOverlay]);
 
   useEffect(() => {
-    if (!isOverlay) {
-      const channel = new BroadcastChannel(OVERLAY_CHANNEL);
-      overlayChannelRef.current = channel;
-      return () => {
-        channel.close();
-        overlayChannelRef.current = null;
-      };
-    }
-    return undefined;
-  }, [isOverlay]);
+    if (!isOverlay) overlayChannelRef.current?.postMessage({ type: 'sync-state', ...snapshotRef.current });
+  }, [lines, review, translationBusy, offlineBusy, isOverlay]);
 
   useEffect(() => {
     if (autoScroll && !isOverlay) transcriptRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
@@ -158,7 +179,12 @@ function Home() {
 
   useEffect(() => {
     captureStateRef.current = captureState;
+    if (captureState !== 'capturing') dialogueGateRef.current.interrupt();
   }, [captureState]);
+
+  useEffect(() => {
+    if (selectingRegion) dialogueGateRef.current.interrupt();
+  }, [selectingRegion]);
 
   const getSelectionPoint = (event: ReactPointerEvent<HTMLDivElement>) => {
     const bounds = event.currentTarget.getBoundingClientRect();
@@ -206,6 +232,9 @@ function Home() {
       return;
     }
     setOcrRegion(nextRegion);
+    captureScopeRef.current++;
+    dialogueGateRef.current.reset();
+    setRecognizedJapanese('');
     setCaptureError('');
   };
 
@@ -243,8 +272,6 @@ function Home() {
     setTranslationMode(mode);
     setTranslationError('');
     translate.reset();
-    recentTextRef.current = [];
-    retryTextRef.current = null;
   };
 
   const prepareOffline = async () => {
@@ -254,7 +281,6 @@ function Home() {
     try {
       localTranslator.current ??= new OfflineTranslator();
       await localTranslator.current.prepare(setOfflineStatus);
-      recentTextRef.current = [];
       setOfflineStatus('Local model ready. Japanese-to-English translation self-test passed on this device.');
     } catch (error) {
       setOfflineStatus(offlineFailureMessage(error));
@@ -263,12 +289,16 @@ function Home() {
     }
   };
 
-  const translateText = async (text: string, clearDraft = false): Promise<boolean> => {
-    if (!text || translatingRef.current || offlineBusy) return false;
-    if (linesRef.current.length >= MAX_SAVED_LINES) {
-      setTranslationError('Journal full (500 lines). Export a backup, then clear the journal before translating more. Existing dialogue has not been removed.');
-      return false;
-    }
+  const translateText = async (text: string, clearDraft = false, origin: 'manual' | 'capture' = 'manual'): Promise<boolean> => {
+    if (!text || translatingRef.current || offlineBusyRef.current) return false;
+    dialogueGateRef.current.markAttempted(text);
+    const id = `${Date.now()}-${++requestSequenceRef.current}`;
+    const session = captureSessionRef.current;
+    const scope = captureScopeRef.current;
+    const cancelled = () => origin === 'capture' &&
+      (session !== captureSessionRef.current || scope !== captureScopeRef.current);
+    const attempt: Review = { id, sourceText: text, translatedText: null, timestamp: Date.now(), status: 'translating' };
+    updateReview(attempt);
     translatingRef.current = true;
     setTranslationBusy(true);
     setTranslationError('');
@@ -282,20 +312,31 @@ function Home() {
       } else {
         result = await translate.mutateAsync({ data: { text } });
       }
-      setLines((current) => [{ ...result, timestamp: Date.now() }, ...current]);
+      if (cancelled()) {
+        if (reviewRef.current?.id === id) updateReview(null);
+        return false;
+      }
+      updateReview({ ...attempt, sourceText: text, translatedText: result.translatedText, status: 'pending' });
       if (clearDraft) manualForm.reset({ text: '' });
       return true;
     } catch (error) {
-      const status = (error as { status?: number } | null)?.status;
-      if (modeRef.current === 'offline' || !navigator.onLine) {
-        setTranslationError(offlineFailureMessage(error));
-      } else if (status === 429) {
-        setTranslationError('Free cloud allowance reached. Switch to offline translation or try again later.');
-      } else if (status === 503) {
-        setTranslationError('Developer-funded cloud translation is unavailable. Please use offline translation.');
-      } else {
-        setTranslationError('Translation could not be reached. Check your connection and try again.');
+      if (cancelled()) {
+        if (reviewRef.current?.id === id) updateReview(null);
+        return false;
       }
+      const status = (error as { status?: number } | null)?.status;
+      let message: string;
+      if (modeRef.current === 'offline' || !navigator.onLine) {
+        message = offlineFailureMessage(error);
+      } else if (status === 429) {
+        message = 'Free cloud allowance reached. Switch to offline translation or try again later.';
+      } else if (status === 503) {
+        message = 'Developer-funded cloud translation is unavailable. Please use offline translation.';
+      } else {
+        message = 'Translation could not be reached. Check your connection and try again.';
+      }
+      setTranslationError(message);
+      updateReview({ ...attempt, status: 'error', error: message });
       return false;
     } finally {
       translatingRef.current = false;
@@ -320,8 +361,7 @@ function Home() {
     setDraftRegion(null);
     setSelectingRegion(false);
     setCaptureAspect(null);
-    recentTextRef.current = [];
-    retryTextRef.current = null;
+    dialogueGateRef.current.reset();
     processingFrameRef.current = false;
     setRecognizedJapanese('');
     setCaptureEvidence({ stage: 'Waiting for Windows/browser source selection.', source: '', crop: '', frames: 0, confidence: null });
@@ -400,12 +440,14 @@ function Home() {
         processingFrameRef.current = true;
         try {
           if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || track.muted) {
+            dialogueGateRef.current.interrupt();
             setCaptureEvidence(current => ({ ...current, stage: 'Waiting for video data. Restore the game window; if the preview stays blank, stop and choose the whole display.' }));
             return;
           }
           const sourceWidth = video.videoWidth;
           const sourceHeight = video.videoHeight;
           const region = ocrRegionRef.current;
+          const scope = captureScopeRef.current;
           const geometry = captureGeometry(sourceWidth, sourceHeight, region);
           canvas.width = geometry.width;
           canvas.height = geometry.height;
@@ -434,6 +476,8 @@ function Home() {
             new CapturePipelineError('ocr-read', 'Japanese OCR took longer than 30 seconds. Stop and retry with a smaller dialogue area.'));
           if (session !== captureSessionRef.current) return;
           const detectedText = readableJapanese(result.data.text);
+          if (scope !== captureScopeRef.current || captureStateRef.current !== 'capturing' || selectingRegionRef.current) return;
+          dialogueGateRef.current.observe(detectedText, Date.now());
           setCaptureEvidence(current => ({
             ...current, confidence: result.data.confidence,
             stage: detectedText ? 'Japanese recognized. Translation is a separate step.' : 'Frame read, but no Japanese recognized. Check the preview and crop around readable dialogue; keep the game cursor outside the text.',
@@ -443,23 +487,19 @@ function Home() {
             return;
           }
           setRecognizedJapanese(detectedText);
-          if (translatingRef.current) return;
-          const key = detectedText.replace(/\s+/g, ' ');
-          if (recentTextRef.current.includes(key)) return;
-          if (retryTextRef.current?.text === key && Date.now() < retryTextRef.current.after) {
-            setCaptureEvidence(current => ({ ...current, stage: 'Japanese recognized; translation previously failed. Retry below or wait 30 seconds for an automatic retry.' }));
+          if (translatingRef.current || offlineBusyRef.current) return;
+          if (reviewRef.current && reviewRef.current.status !== 'accepted') {
+            setCaptureEvidence(current => ({ ...current, stage: 'Review the current translation: choose Correct to save it, or Incorrect — retry. No automatic retries will run.' }));
+            return;
+          }
+          if (!dialogueGateRef.current.claim(Date.now())) {
+            setCaptureEvidence(current => ({ ...current, stage: 'Waiting for new dialogue to remain unchanged for at least 3 seconds. A translated page is not submitted again automatically.' }));
             return;
           }
           setCaptureEvidence(current => ({ ...current, stage: `Japanese recognized; translating using ${modeRef.current === 'cloud' && navigator.onLine ? 'consented cloud mode' : 'on-device mode'}.` }));
-          const success = await translateText(detectedText);
+          const success = await translateText(detectedText, false, 'capture');
           if (session !== captureSessionRef.current) return;
-          if (success) {
-            recentTextRef.current = [...recentTextRef.current.slice(-29), key];
-            retryTextRef.current = null;
-          } else {
-            retryTextRef.current = { text: key, after: Date.now() + 30_000 };
-          }
-          setCaptureEvidence(current => ({ ...current, stage: success ? 'Japanese OCR and translation succeeded. The result is in the journal.' : 'Japanese OCR succeeded, but translation failed. Recognized text remains visible below; see the translation error.' }));
+          setCaptureEvidence(current => ({ ...current, stage: success ? 'One translation is ready for review. Nothing is saved until you choose Correct.' : 'The single translation attempt failed. Use Incorrect — retry; there are no automatic retries.' }));
         } catch (error) {
           if (session !== captureSessionRef.current) return;
           const message = captureFailureMessage(error, 'ocr-read');
@@ -503,25 +543,50 @@ function Home() {
     setCaptureError('');
     setOcrStatus('Japanese OCR is ready');
     setOcrProgress(0);
-    setCaptureEvidence(current => ({ ...current, stage: 'Capture stopped. No additional frames will be read or submitted. An already submitted translation may finish.' }));
+    dialogueGateRef.current.interrupt();
+    setCaptureEvidence(current => ({ ...current, stage: 'Capture stopped. In-flight capture results are discarded; existing review and approved journal entries remain available.' }));
   };
 
-  const retryRecognizedTranslation = async () => {
-    if (!recognizedJapanese || translatingRef.current || offlineBusy) return;
-    const key = recognizedJapanese.replace(/\s+/g, ' ');
-    const success = await translateText(recognizedJapanese);
-    if (success) {
-      recentTextRef.current = [...recentTextRef.current.slice(-29), key];
-      retryTextRef.current = null;
-    } else {
-      retryTextRef.current = { text: key, after: Date.now() + 30_000 };
+  const acceptTranslation = (id: string) => {
+    if (isOverlay) {
+      overlayChannelRef.current?.postMessage({ type: 'accept-review', id });
+      return;
     }
-    setCaptureEvidence(current => ({ ...current, stage: success ? 'Recognized Japanese translated successfully. The result is in the journal.' : 'Japanese remains available. Translation failed; see the translation error.' }));
+    try {
+      const approved = approveReview(reviewRef.current, id, linesRef.current, MAX_SAVED_LINES);
+      if (!approved) return;
+      // Acknowledgement follows durable storage, not merely a React state update.
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(approved.lines));
+      } catch {
+        throw new Error('The approved translation could not be saved on this device. Export a backup and free storage, then choose Correct again.');
+      }
+      linesRef.current = approved.lines;
+      updateReview(approved.review);
+      setLines(approved.lines);
+      setTranslationError('');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'The translation could not be approved.';
+      setTranslationError(message);
+      if (reviewRef.current) updateReview({ ...reviewRef.current, error: message });
+    }
   };
+
+  const retryTranslation = (id: string) => {
+    if (isOverlay) {
+      overlayChannelRef.current?.postMessage({ type: 'retry-review', id });
+      return;
+    }
+    const current = reviewRef.current;
+    if (!current || current.id !== id || !['pending', 'error'].includes(current.status) ||
+      translatingRef.current || offlineBusy) return;
+    void translateText(current.sourceText);
+  };
+  reviewActionsRef.current = { accept: acceptTranslation, retry: retryTranslation };
 
   const submitText = manualForm.handleSubmit(({ text }) => {
     const value = text.trim();
-    if (!value || translationBusy || offlineBusy) return;
+    if (!value || translationBusy || offlineBusy || (reviewRef.current && reviewRef.current.status !== 'accepted')) return;
     if (value.length > 2000) {
       setTranslationError('Enter at most 2000 characters of dialogue.');
       return;
@@ -572,7 +637,7 @@ function Home() {
         url: 'index.html?overlay=1',
         title: 'MHFZ-Z Translator Overlay - Dialogue',
         width: 480,
-        height: 230,
+        height: 320,
         minWidth: 360,
         minHeight: 170,
         center: true,
@@ -608,7 +673,8 @@ function Home() {
 
   if (isOverlay) {
     return (
-      <OverlayWindow desktop={isDesktop} crest={<Crest size={26} />} latest={latest} />
+      <OverlayWindow desktop={isDesktop} crest={<Crest size={26} />} latest={latest}
+        review={review} busy={translationBusy || offlineBusy} onAccept={acceptTranslation} onRetry={retryTranslation} />
     );
   }
 
@@ -670,9 +736,9 @@ function Home() {
             <CaptureDiagnostics
               evidence={captureEvidence}
               japanese={recognizedJapanese}
-              busy={translationBusy || offlineBusy || recentTextRef.current.includes(recognizedJapanese.replace(/\s+/g, ' '))}
-              retry={() => { void retryRecognizedTranslation(); }}
             />
+            {review && <div className="mt-4"><TranslationReview review={review}
+              busy={translationBusy || offlineBusy} onAccept={acceptTranslation} onRetry={retryTranslation} /></div>}
             <div className={captureState === 'starting' || captureState === 'capturing' || captureState === 'paused' ? 'relative mt-5 space-y-2' : 'fixed -left-[10000px] top-0 h-px w-px overflow-hidden opacity-0'}>
               <div
                 className={`relative w-full overflow-hidden border-2 border-[hsl(var(--bronze)/.55)] bg-[hsl(var(--ink))] ${selectingRegion ? 'cursor-crosshair touch-none' : ''}`}
@@ -719,7 +785,13 @@ function Home() {
                     >
                       {selectingRegion ? 'Cancel area selection' : ocrRegion ? 'Redraw dialogue area' : 'Select dialogue area'}
                     </button>
-                    {ocrRegion && <button type="button" onClick={() => { setOcrRegion(null); setSelectingRegion(false); }} className="link-bronze" data-testid="button-reset-dialogue-region">Full screen</button>}
+                    {ocrRegion && <button type="button" onClick={() => {
+                      captureScopeRef.current++;
+                      dialogueGateRef.current.reset();
+                      setRecognizedJapanese('');
+                      setOcrRegion(null);
+                      setSelectingRegion(false);
+                    }} className="link-bronze" data-testid="button-reset-dialogue-region">Full screen</button>}
                   </div>
                 </div>
               )}
@@ -749,7 +821,11 @@ function Home() {
               </div>
               <div className="flex items-center gap-1.5">
                 <button onClick={() => setAutoScroll((value) => !value)} aria-pressed={autoScroll} className={`btn-chip ${autoScroll ? 'btn-chip-on' : ''}`} data-testid="button-toggle-follow"><ArrowDown size={12} /> Follow</button>
-                <button onClick={() => setLines([])} disabled={!lines.length} className="btn-chip btn-danger" data-testid="button-clear-transcript"><Trash2 size={12} /> Clear</button>
+                <button onClick={() => {
+                  linesRef.current = [];
+                  setLines([]);
+                  if (reviewRef.current?.status === 'accepted') updateReview(null);
+                }} disabled={!lines.length} className="btn-chip btn-danger" data-testid="button-clear-transcript"><Trash2 size={12} /> Clear</button>
               </div>
             </div>
             <DialogueBackups lines={lines} onRestore={(incoming) => {
@@ -780,7 +856,7 @@ function Home() {
                 <div className="flex min-h-[260px] flex-col items-center justify-center px-6 py-10 text-center" data-testid="empty-transcript">
                   <Crest size={60} muted />
                   <h3 className="mt-4 font-display text-base font-bold text-[hsl(var(--parchment))]">The journal is blank</h3>
-                  <p className="mt-1.5 max-w-xs text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">Select a game capture to detect and translate Japanese dialogue automatically, or enter a line below.</p>
+                  <p className="mt-1.5 max-w-xs text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">Review translations above and choose Correct to save them here. Unapproved results and retries are never added automatically.</p>
                 </div>
               )}
             </div>
@@ -789,7 +865,7 @@ function Home() {
               <label htmlFor="dialogue-input" className="mb-2 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[.14em] text-[hsl(var(--bronze-hi))]"><span>Translate a line</span><span className="font-mono-ui normal-case tracking-normal text-[hsl(var(--muted-foreground))]">Japanese to English</span></label>
               <div className="flex flex-col gap-2 sm:flex-row">
                 <input id="dialogue-input" {...manualForm.register('text', { maxLength: 2000 })} value={draft} maxLength={2000} placeholder="Paste or type Japanese dialogue..." className="field h-11 min-w-0 flex-1 font-jp text-sm" data-testid="input-dialogue" />
-                <button type="submit" disabled={!draft.trim() || translationBusy || offlineBusy} className="btn-bronze h-11 justify-center" data-testid="button-translate"><Languages size={14} /> Translate</button>
+                <button type="submit" disabled={!draft.trim() || translationBusy || offlineBusy || (!!review && review.status !== 'accepted')} className="btn-bronze h-11 justify-center" data-testid="button-translate"><Languages size={14} /> Translate</button>
               </div>
               <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-[hsl(var(--muted-foreground))]"><span>Manual translation works alongside automatic capture.</span><span className="font-mono-ui">{draft.length}/2000</span></div>
             </form>

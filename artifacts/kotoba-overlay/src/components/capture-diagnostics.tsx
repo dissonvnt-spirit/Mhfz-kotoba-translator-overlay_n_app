@@ -6,8 +6,8 @@ export interface CaptureEvidence {
   confidence: number | null;
 }
 
-export function CaptureDiagnostics({ evidence, japanese, busy, retry }: {
-  evidence: CaptureEvidence; japanese: string; busy: boolean; retry: () => void;
+export function CaptureDiagnostics({ evidence, japanese }: {
+  evidence: CaptureEvidence; japanese: string;
 }) {
   return (
     <div className="relative mt-4 border border-[hsl(var(--bronze)/.3)] bg-black/15 p-3 text-xs" data-testid="capture-diagnostics" aria-live="polite">
@@ -20,10 +20,7 @@ export function CaptureDiagnostics({ evidence, japanese, busy, retry }: {
       {japanese && <div className="mt-3 border-t border-[hsl(var(--bronze)/.2)] pt-2">
         <p className="font-semibold">Last recognized Japanese <span className="font-normal text-[hsl(var(--muted-foreground))]">(shown even if translation fails)</span></p>
         <p className="font-jp mt-1 whitespace-pre-wrap break-words leading-relaxed" data-testid="text-recognized-japanese">{japanese}</p>
-        <button type="button" className="btn-chip mt-2" disabled={busy} onClick={retry} data-testid="button-retry-recognized">
-          Retry translation in selected mode
-        </button>
-        <p className="mt-1 text-[11px] text-[hsl(var(--muted-foreground))]">This diagnostic text is not saved to the journal until translation succeeds.</p>
+        <p className="mt-1 text-[11px] text-[hsl(var(--muted-foreground))]">Dialogue must remain stable for 3 seconds before one translation attempt. Only translations you mark Correct are saved.</p>
       </div>}
     </div>
   );

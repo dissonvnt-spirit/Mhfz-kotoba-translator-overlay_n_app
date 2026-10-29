@@ -111,6 +111,8 @@ jobs:
         run: pnpm --filter @workspace/kotoba-overlay run test:windows-smoke
       - name: Verify horizontal-only Japanese OCR and asset cleanup
         run: pnpm --filter @workspace/kotoba-overlay run test:horizontal-ocr
+      - name: Verify stable dialogue, explicit retries and approval-only journaling
+        run: pnpm --filter @workspace/kotoba-overlay run test:dialogue-review
 
       - name: Build Windows installer
         shell: pwsh
