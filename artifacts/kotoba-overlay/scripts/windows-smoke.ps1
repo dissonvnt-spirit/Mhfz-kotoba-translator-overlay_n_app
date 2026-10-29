@@ -3,7 +3,8 @@
 param(
     [Parameter(Mandatory = $true)][string]$BundleDirectory,
     [Parameter(Mandatory = $true)][string]$InstallDirectory,
-    [Parameter(Mandatory = $true)][string]$DiagnosticsDirectory
+    [Parameter(Mandatory = $true)][string]$DiagnosticsDirectory,
+    [Parameter(Mandatory = $true)][ValidateSet(100, 125, 150, 200)][int]$ScalingPercent
 )
 
 Set-StrictMode -Version Latest
@@ -14,12 +15,14 @@ $report = [ordered]@{
     status = 'running'
     stage = 'initialization'
     checks = @()
+    requestedScalingPercent = $ScalingPercent
+    resizeCases = @()
 }
 $app = $null
 $installerProcess = $null
 
 function Save-Report {
-    $report | ConvertTo-Json -Depth 6 |
+    $report | ConvertTo-Json -Depth 10 |
         Set-Content -Encoding UTF8 (Join-Path $DiagnosticsDirectory 'smoke-result.json')
 }
 
@@ -49,6 +52,11 @@ try {
     if ($env:OS -ne 'Windows_NT') { throw 'This smoke check requires Windows.' }
     . (Join-Path $PSScriptRoot 'offline-diagnostics.ps1')
     . (Join-Path $PSScriptRoot 'windows-smoke-geometry.ps1')
+    . (Join-Path $PSScriptRoot 'windows-smoke-display.ps1')
+    . (Join-Path $PSScriptRoot 'windows-smoke-resize.ps1')
+    Set-Stage 'configure-real-display-scaling'
+    $report.displayConfiguration = Set-SmokeDisplay $ScalingPercent
+    Save-Report
     # PowerShell accepts mixed separators; NSIS parses /D itself and requires a
     # native Windows path. Do not pass a POSIX-style suffix to the installer.
     $InstallDirectory = [System.IO.Path]::GetFullPath($InstallDirectory).Replace('/', '\')
@@ -70,6 +78,8 @@ public static class KotobaSmokeWindows {
     [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(Point point);
     [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
     [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr hwnd);
+    [DllImport("user32.dll")] public static extern bool SetWindowPos(
+        IntPtr hwnd, IntPtr after, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
@@ -211,6 +221,10 @@ public static class KotobaSmokeWindows {
     $report.processId = $app.Id
     $main = Wait-For 'visible installed main window' { Get-AppWindows 'MHFZ-Z Translator Overlay' }
     $main = [IntPtr]$main
+    $report.mainDpi = [KotobaSmokeWindows]::GetDpiForWindow($main)
+    if ($report.mainDpi -ne (96 * $ScalingPercent / 100)) {
+        throw "Main window DPI $($report.mainDpi) does not match requested $ScalingPercent% scaling."
+    }
     Assert-Alive $main
     $report.checks += 'main-window-visible-and-responsive-10s'
 
@@ -263,6 +277,9 @@ public static class KotobaSmokeWindows {
     $report.overlayInitialBounds = $before
     $report.overlayDpi = [KotobaSmokeWindows]::GetDpiForWindow($overlay)
     $report.overlayScalingPercent = [Math]::Round($report.overlayDpi / 96.0 * 100)
+    if ($report.overlayDpi -ne (96 * $ScalingPercent / 100)) {
+        throw "Overlay DPI $($report.overlayDpi) does not match requested $ScalingPercent% scaling."
+    }
     $move = Wait-For 'overlay drag handle' { Get-Control $overlay 'Move overlay' $true }
     $bounds = $move.Current.BoundingRectangle
     Drag-Mouse ([int]($bounds.Left + $bounds.Width / 2)) ([int]($bounds.Top + $bounds.Height / 2)) -70 -40
@@ -274,45 +291,7 @@ public static class KotobaSmokeWindows {
     $report.checks += 'overlay-moves-with-mouse'
 
     Set-Stage 'overlay-mouse-resize'
-    $before = Get-Bounds $overlay
-    $client = Get-ClientBounds $overlay
-    $report.overlayResizeBefore = $before
-    $report.overlayClientBounds = $client
-    $legacyTarget = [ordered]@{ x = $before.x + $before.width - 8; y = $before.y + $before.height - 8 }
-    $report.overlayLegacyResizeTarget = [ordered]@{
-        x = $legacyTarget.x; y = $legacyTarget.y
-        insideClient = Test-PointInBounds $legacyTarget $client
-    }
-    # GetWindowRect includes Windows' hidden frame/shadow, even without title
-    # decorations. CSS resize handlers live in the client area. Convert its
-    # 16 CSS px corner center to physical pixels using this window's DPI.
-    $target = Get-OverlayResizeTarget $client ([KotobaSmokeWindows]::GetDpiForWindow($overlay))
-    $point = New-Object KotobaSmokeWindows+Point
-    $point.X = $target.x
-    $point.Y = $target.y
-    $report.overlayResizeTarget = [ordered]@{
-        x = $point.X; y = $point.Y
-        insideClient = Test-PointInBounds $target $client
-        rootIsOverlay = [KotobaSmokeWindows]::GetAncestor([KotobaSmokeWindows]::WindowFromPoint($point), 2) -eq $overlay
-    }
-    Write-Host ("Resize geometry: " + (([ordered]@{
-        dpi = $report.overlayDpi; outer = $before; client = $client
-        legacyTarget = $report.overlayLegacyResizeTarget; target = $report.overlayResizeTarget
-    }) | ConvertTo-Json -Compress -Depth 4))
-    Save-Report
-    if (-not $report.overlayResizeTarget.insideClient -or -not $report.overlayResizeTarget.rootIsOverlay) {
-        throw 'Resize target is outside the overlay client area or covered by another window.'
-    }
-    Drag-Mouse $target.x $target.y 80 60
-    $null = Wait-For 'overlay to grow using its resize grip' {
-        $after = Get-Bounds $overlay
-        $report.overlayResizeAfter = $after
-        $after.width -ge ($before.width + 30) -and $after.height -ge ($before.height + 20)
-    }
-    $report.overlayResizedBounds = Get-Bounds $overlay
-    Write-Host ("Resize final bounds: " + ($report.overlayResizedBounds | ConvertTo-Json -Compress))
-    Assert-Alive $main 2
-    $report.checks += 'overlay-resizes-with-mouse'
+    Invoke-OverlayResizeChecks $overlay $main $ScalingPercent
 
     Set-Stage 'overlay-reuse'
     Invoke-Control $main 'Overlay window'
@@ -386,11 +365,13 @@ finally {
 ## Windows installed-app smoke check: $($report.status)
 Stage: $($report.stage)
 
+Requested scale: $ScalingPercent%. Measured window DPI: $($report['overlayDpi']).
+
 Completed checks: $($report.checks -join ', ')
 
 $($report.scope)
 
-See the windows-smoke-diagnostics artifact for the bounded, credential-free report.
+See the windows-smoke-diagnostics-$ScalingPercent artifact for per-direction physical mouse and bounds evidence.
 "@ | Add-Content -Encoding UTF8 $env:GITHUB_STEP_SUMMARY
     }
 }

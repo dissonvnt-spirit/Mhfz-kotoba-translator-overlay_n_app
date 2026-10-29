@@ -17,6 +17,19 @@ foreach ($dpi in @(96, 120, 144, 168, 192)) {
     # The target must be inside the 16 CSS px southeast corner, not just the client.
     Assert-Equal ($point.x -gt ($client.x + $client.width - 16 * $scale)) $true
     Assert-Equal ($point.y -gt ($client.y + $client.height - 16 * $scale)) $true
+    foreach ($direction in @('North', 'South', 'East', 'West', 'NorthEast', 'NorthWest', 'SouthEast', 'SouthWest')) {
+        $point = Get-OverlayResizeTarget $client $dpi $direction
+        Assert-Equal (Test-PointInBounds $point $client) $true
+        $offset = if ($direction -in @('North', 'South', 'East', 'West')) { 4 * $scale } else { 8 * $scale }
+        $expectedX = $client.x + $client.width / 2
+        $expectedY = $client.y + $client.height / 2
+        if ($direction -match 'West') { $expectedX = $client.x + $offset }
+        if ($direction -match 'East') { $expectedX = $client.x + $client.width - $offset }
+        if ($direction -match 'North') { $expectedY = $client.y + $offset }
+        if ($direction -match 'South') { $expectedY = $client.y + $client.height - $offset }
+        Assert-Equal $point.x ([int]$expectedX)
+        Assert-Equal $point.y ([int]$expectedY)
+    }
 }
 
 # An undecorated Windows window may still have 8px hidden frame/shadow bounds.
@@ -44,3 +57,19 @@ foreach ($case in @(
 }
 
 Write-Host 'Windows overlay resize geometry checks passed.'
+
+$before = @{ x = 200; y = 200; width = 480; height = 230 }
+foreach ($direction in @('North', 'South', 'East', 'West', 'NorthEast', 'NorthWest', 'SouthEast', 'SouthWest')) {
+    $after = @{ x = 200; y = 200; width = 480; height = 230 }
+    if ($direction -match 'East|West') { $after.width += 80 }
+    if ($direction -match 'North|South') { $after.height += 60 }
+    if ($direction -match 'West') { $after.x -= 80 }
+    if ($direction -match 'North') { $after.y -= 60 }
+    Assert-Equal (Test-OverlayResizeAnchors $before $after $direction) $true
+    $after.x += 10
+    Assert-Equal (Test-OverlayResizeAnchors $before $after $direction) $false
+}
+# A single edge may not resize the other axis.
+Assert-Equal (Test-OverlayResizeAnchors $before @{ x = 200; y = 200; width = 560; height = 240 } 'East') $false
+Assert-Equal (Test-OverlayResizeAnchors $before @{ x = 200; y = 200; width = 490; height = 290 } 'South') $false
+Write-Host 'Windows overlay anchored-edge checks passed (supplemental, not native mouse evidence).'
