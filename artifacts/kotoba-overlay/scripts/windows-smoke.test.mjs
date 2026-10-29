@@ -62,7 +62,13 @@ test('release is gated by isolated, measured real desktop DPI runs', async () =>
   assert.match(workflow, /fail-fast: false/);
   assert.match(workflow, /-ScalingPercent \$\{\{ matrix.scaling \}\}/);
   assert.match(workflow, /name: windows-smoke-diagnostics-\$\{\{ matrix.scaling \}\}/);
-  assert.match(workflow, /needs: \[build, windows-controls\]/);
+  const release = workflow.split('\n  release:\n')[1];
+  assert.ok(release, 'The release job must exist');
+  const requiredJobs = release.match(/needs:\s*\[([^\]]+)\]/)?.[1]
+    .split(',').map(name => name.trim()) ?? [];
+  for (const required of ['build', 'windows-controls', 'rust-security']) {
+    assert.ok(requiredJobs.includes(required), `Release must depend on ${required}`);
+  }
   assert.match(smoke, /Set-SmokeDisplay \$ScalingPercent/);
   assert.match(smoke, /\$report\.mainDpi -ne \(96 \* \$ScalingPercent \/ 100\)/);
   assert.match(smoke, /\$report\.overlayDpi -ne \(96 \* \$ScalingPercent \/ 100\)/);
