@@ -14,7 +14,9 @@ import { mergeDialogue } from '@/lib/dialogue-backup';
 import { TranslationOptions, type TranslationMode } from '@/components/translation-options';
 import { isTauri } from '@tauri-apps/api/core';
 import { useForm } from 'react-hook-form';
-import { createWorker, type Worker } from 'tesseract.js';
+import { createWorker, PSM, type Worker } from 'tesseract.js';
+import { CaptureDiagnostics, type CaptureEvidence } from '@/components/capture-diagnostics';
+import { captureGeometry, captureFailureMessage, CapturePipelineError, readableJapanese, waitForCaptureFrame, withCaptureDeadline, type CapturePhase } from '@/lib/capture-pipeline';
 import {
   ArrowDown, ArrowUpRight, Captions, Check, ChevronDown, CircleHelp, Copy,
   Gamepad2, Languages, LoaderCircle, Monitor, Pause, Play, Radio, ScanText,
@@ -29,13 +31,12 @@ import {
 
 const queryClient = new QueryClient();
 
-type CaptureState = 'idle' | 'capturing' | 'paused' | 'error';
+type CaptureState = 'idle' | 'starting' | 'capturing' | 'paused' | 'error';
 type DetectedLine = { sourceText: string; translatedText: string; timestamp: number };
 type OCRRegion = { x: number; y: number; width: number; height: number };
 const STORAGE_KEY = 'kotoba-overlay-lines';
 const API_BASE_KEY = 'kotoba-translation-api-base';
 const OVERLAY_CHANNEL = 'kotoba-overlay-sync';
-const JAPANESE_TEXT = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/;
 const MAX_SAVED_LINES = 500;
 const DEFAULT_CLOUD_URL = 'https://Mhfzz-game-translator.replit.app';
 
@@ -73,6 +74,11 @@ function Home() {
   const [autoScroll, setAutoScroll] = useState(true);
   const [ocrStatus, setOcrStatus] = useState('Japanese OCR is ready');
   const [ocrProgress, setOcrProgress] = useState(0);
+  const [recognizedJapanese, setRecognizedJapanese] = useState('');
+  const [captureEvidence, setCaptureEvidence] = useState<CaptureEvidence>({
+    stage: 'Not started. Cloud mode also needs a live video frame and local Japanese OCR.',
+    source: '', crop: '', frames: 0, confidence: null,
+  });
   const [translationError, setTranslationError] = useState('');
   const [apiSaved, setApiSaved] = useState(false);
   const transcriptRef = useRef<HTMLDivElement>(null);
@@ -88,6 +94,8 @@ function Home() {
   const processingFrameRef = useRef(false);
   const translatingRef = useRef(false);
   const recentTextRef = useRef<string[]>([]);
+  const captureSessionRef = useRef(0);
+  const retryTextRef = useRef<{ text: string; after: number } | null>(null);
   const overlayChannelRef = useRef<BroadcastChannel | null>(null);
   const openingOverlayRef = useRef(false);
   selectingRegionRef.current = selectingRegion;
@@ -223,6 +231,7 @@ function Home() {
   }, []);
 
   useEffect(() => () => {
+    captureSessionRef.current++;
     if (pollRef.current !== null) window.clearInterval(pollRef.current);
     streamRef.current?.getTracks().forEach((track) => track.stop());
     void workerRef.current?.terminate();
@@ -236,6 +245,7 @@ function Home() {
     setTranslationError('');
     translate.reset();
     recentTextRef.current = [];
+    retryTextRef.current = null;
   };
 
   const prepareOffline = async () => {
@@ -295,10 +305,15 @@ function Home() {
   };
 
   const startCapture = async () => {
+    if (captureStateRef.current !== 'idle' && captureStateRef.current !== 'error') return;
     if (offlineBusy) {
       setCaptureError('Wait for local model preparation to finish before starting capture.');
       return;
     }
+    const session = ++captureSessionRef.current;
+    captureStateRef.current = 'starting';
+    setCaptureState('starting');
+    let phase: CapturePhase = 'selection';
     setCaptureError('');
     setTranslationError('');
     setOcrProgress(0);
@@ -307,116 +322,171 @@ function Home() {
     setSelectingRegion(false);
     setCaptureAspect(null);
     recentTextRef.current = [];
+    retryTextRef.current = null;
+    processingFrameRef.current = false;
+    setRecognizedJapanese('');
+    setCaptureEvidence({ stage: 'Waiting for Windows/browser source selection.', source: '', crop: '', frames: 0, confidence: null });
     setOcrStatus('Choose a game window or display...');
     try {
+      if (!navigator.mediaDevices?.getDisplayMedia) {
+        throw new CapturePipelineError('selection', 'Screen capture is not supported by this browser/WebView. Update Microsoft Edge WebView2 and use the installed Windows app or a supported desktop browser.');
+      }
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      if (session !== captureSessionRef.current) {
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
       streamRef.current = stream;
       const [track] = stream.getVideoTracks();
-      setCaptureName(track?.label || 'Selected display');
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        if (videoRef.current.videoWidth && videoRef.current.videoHeight) {
-          setCaptureAspect(videoRef.current.videoWidth / videoRef.current.videoHeight);
-        }
+      if (!track || track.readyState !== 'live') {
+        throw new CapturePipelineError('frames', 'The selected source has no live video track. Restore the game and select a window or display again.');
       }
-      track?.addEventListener('ended', () => {
-        stopCapture();
+      setCaptureName(track?.label || 'Selected display');
+      track.addEventListener('ended', () => {
+        if (session === captureSessionRef.current) stopCapture();
       }, { once: true });
+      phase = 'frames';
+      const preview = videoRef.current;
+      if (!preview) throw new CapturePipelineError('frames', 'The capture preview is unavailable. Reload the app and retry.');
+      preview.srcObject = stream;
+      setCaptureEvidence(current => ({ ...current, stage: 'Source selected; waiting for a decodable video frame.' }));
+      await waitForCaptureFrame(preview);
+      if (session !== captureSessionRef.current) return;
+      setCaptureAspect(preview.videoWidth / preview.videoHeight);
+      setCaptureEvidence(current => ({ ...current, source: `${preview.videoWidth} × ${preview.videoHeight}`, stage: 'Video frame received. Loading local Japanese OCR assets.' }));
+      phase = 'ocr-start';
       setOcrStatus('Loading Japanese OCR...');
-      const worker = await createWorker(ocrOrientation === 'vertical' ? 'jpn_vert' : 'jpn', undefined, {
+      const worker = await withCaptureDeadline(createWorker(ocrOrientation === 'vertical' ? 'jpn_vert' : 'jpn', undefined, {
         workerPath: new URL(`${import.meta.env.BASE_URL}ocr/worker.min.js`, window.location.href).href,
         corePath: new URL(`${import.meta.env.BASE_URL}ocr/`, window.location.href).href,
         langPath: new URL(`${import.meta.env.BASE_URL}ocr/`, window.location.href).href,
         workerBlobURL: false,
         logger: ({ status, progress }) => {
+          if (session !== captureSessionRef.current) return;
           setOcrStatus(status.replaceAll('_', ' '));
           setOcrProgress(Math.round(progress * 100));
         },
-      });
+      }), 90_000, new CapturePipelineError('ocr-start', 'Local Japanese OCR did not finish loading within 90 seconds. Stop and retry; reinstall the app if its bundled OCR resources are missing.'), lateWorker => { void lateWorker.terminate(); });
+      if (session !== captureSessionRef.current) {
+        void worker.terminate();
+        return;
+      }
       workerRef.current = worker;
+      await withCaptureDeadline(worker.setParameters({
+        tessedit_pageseg_mode: ocrOrientation === 'vertical' ? PSM.SINGLE_BLOCK_VERT_TEXT : PSM.SINGLE_BLOCK,
+        user_defined_dpi: '150',
+      }), 10_000, new CapturePipelineError('ocr-start', 'Japanese OCR settings could not initialize. Restart capture.'));
+      if (session !== captureSessionRef.current) return;
       captureStateRef.current = 'capturing';
       setCaptureState('capturing');
       setOcrStatus('Reading Japanese dialogue automatically');
+      setCaptureEvidence(current => ({ ...current, stage: `Video and ${ocrOrientation} Japanese OCR are ready. Waiting for dialogue.` }));
 
       pollRef.current = window.setInterval(async () => {
         const video = videoRef.current;
         const canvas = canvasRef.current;
         const activeWorker = workerRef.current;
         if (
+          session !== captureSessionRef.current ||
           captureStateRef.current !== 'capturing' ||
           selectingRegionRef.current ||
           processingFrameRef.current ||
           translatingRef.current ||
           !video ||
           !canvas ||
-          !activeWorker ||
-          video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
+          !activeWorker
         ) return;
 
         processingFrameRef.current = true;
         try {
+          if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || track.muted) {
+            setCaptureEvidence(current => ({ ...current, stage: 'Waiting for video data. Restore the game window; if the preview stays blank, stop and choose the whole display.' }));
+            return;
+          }
           const sourceWidth = video.videoWidth;
           const sourceHeight = video.videoHeight;
-          if (!sourceWidth || !sourceHeight) return;
           const region = ocrRegionRef.current;
-          const cropX = region ? Math.round(region.x * sourceWidth) : 0;
-          const cropY = region ? Math.round(region.y * sourceHeight) : 0;
-          const cropWidth = region ? Math.round(region.width * sourceWidth) : sourceWidth;
-          const cropHeight = region ? Math.round(region.height * sourceHeight) : sourceHeight;
-          if (!cropWidth || !cropHeight) return;
-          const scale = region
-            ? Math.min(2, 1600 / cropWidth)
-            : Math.min(1, 1200 / sourceWidth);
-          canvas.width = Math.max(1, Math.round(cropWidth * scale));
-          canvas.height = Math.max(1, Math.round(cropHeight * scale));
+          const geometry = captureGeometry(sourceWidth, sourceHeight, region);
+          canvas.width = geometry.width;
+          canvas.height = geometry.height;
           const context = canvas.getContext('2d', { willReadFrequently: true });
-          if (!context) return;
+          if (!context) throw new CapturePipelineError('ocr-read', 'The OCR canvas could not initialize. Restart the app and update WebView2.');
           context.filter = 'grayscale(1) contrast(1.12)';
           context.drawImage(
             video,
-            cropX,
-            cropY,
-            cropWidth,
-            cropHeight,
+            geometry.left,
+            geometry.top,
+            geometry.cropWidth,
+            geometry.cropHeight,
             0,
             0,
             canvas.width,
             canvas.height,
           );
           context.filter = 'none';
-          const result = await activeWorker.recognize(canvas);
-          const detectedText = result.data.text.replace(/[ \t]+/g, ' ').trim().slice(0, 1800);
-          if (!JAPANESE_TEXT.test(detectedText) || detectedText.length < 2) return;
+          setCaptureAspect(sourceWidth / sourceHeight);
+          setCaptureEvidence(current => ({
+            ...current, source: `${sourceWidth} × ${sourceHeight}`,
+            crop: `${geometry.cropWidth} × ${geometry.cropHeight} at ${geometry.left},${geometry.top} → ${geometry.width} × ${geometry.height}`,
+            frames: current.frames + 1, stage: 'Frame received; reading the selected dialogue area locally.',
+          }));
+          const result = await withCaptureDeadline(activeWorker.recognize(canvas), 30_000,
+            new CapturePipelineError('ocr-read', 'Japanese OCR took longer than 30 seconds. Stop and retry with a smaller dialogue area.'));
+          if (session !== captureSessionRef.current) return;
+          const detectedText = readableJapanese(result.data.text);
+          setCaptureEvidence(current => ({
+            ...current, confidence: result.data.confidence,
+            stage: detectedText ? 'Japanese recognized. Translation is a separate step.' : 'Frame read, but no Japanese recognized. Check the preview and crop around readable dialogue; keep the game cursor outside the text.',
+          }));
+          if (!detectedText) {
+            setOcrStatus('No Japanese recognized in this frame. Check the dialogue area.');
+            return;
+          }
+          setRecognizedJapanese(detectedText);
+          if (translatingRef.current) return;
           const key = detectedText.replace(/\s+/g, ' ');
           if (recentTextRef.current.includes(key)) return;
-          recentTextRef.current = [...recentTextRef.current.slice(-29), key];
-          await translateText(detectedText);
-        } catch {
-          setOcrStatus('OCR paused after a screen-reading error');
+          if (retryTextRef.current?.text === key && Date.now() < retryTextRef.current.after) {
+            setCaptureEvidence(current => ({ ...current, stage: 'Japanese recognized; translation previously failed. Retry below or wait 30 seconds for an automatic retry.' }));
+            return;
+          }
+          setCaptureEvidence(current => ({ ...current, stage: `Japanese recognized; translating using ${modeRef.current === 'cloud' && navigator.onLine ? 'consented cloud mode' : 'on-device mode'}.` }));
+          const success = await translateText(detectedText);
+          if (session !== captureSessionRef.current) return;
+          if (success) {
+            recentTextRef.current = [...recentTextRef.current.slice(-29), key];
+            retryTextRef.current = null;
+          } else {
+            retryTextRef.current = { text: key, after: Date.now() + 30_000 };
+          }
+          setCaptureEvidence(current => ({ ...current, stage: success ? 'Japanese OCR and translation succeeded. The result is in the journal.' : 'Japanese OCR succeeded, but translation failed. Recognized text remains visible below; see the translation error.' }));
+        } catch (error) {
+          if (session !== captureSessionRef.current) return;
+          const message = captureFailureMessage(error, 'ocr-read');
+          stopCapture();
+          captureStateRef.current = 'error';
+          setCaptureState('error');
+          setCaptureError(message);
+          setCaptureEvidence(current => ({ ...current, stage: message }));
+          setOcrStatus('OCR stopped after a screen-reading error');
         } finally {
-          processingFrameRef.current = false;
+          if (session === captureSessionRef.current) processingFrameRef.current = false;
         }
       }, 2200);
     } catch (error) {
-      streamRef.current?.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-      void workerRef.current?.terminate();
-      workerRef.current = null;
-      if (videoRef.current) videoRef.current.srcObject = null;
-      if (error instanceof DOMException && error.name === 'NotAllowedError') {
-        setCaptureError('Screen sharing was cancelled. Choose a window or display to begin.');
-        captureStateRef.current = 'idle';
-        setCaptureState('idle');
-      } else {
-        setCaptureError('Screen capture or Japanese OCR could not start. Check your connection and try again.');
-        captureStateRef.current = 'error';
-        setCaptureState('error');
-      }
+      if (session !== captureSessionRef.current) return;
+      const message = captureFailureMessage(error, phase);
+      stopCapture();
+      setCaptureError(message);
+      setCaptureEvidence(current => ({ ...current, stage: message }));
+      captureStateRef.current = 'error';
+      setCaptureState('error');
     }
   };
 
   const stopCapture = () => {
+    captureSessionRef.current++;
+    captureStateRef.current = 'idle';
     if (pollRef.current !== null) {
       window.clearInterval(pollRef.current);
       pollRef.current = null;
@@ -427,11 +497,26 @@ function Home() {
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
     captureStateRef.current = 'idle';
+    processingFrameRef.current = false;
     setCaptureName('');
     setCaptureState('idle');
     setCaptureError('');
     setOcrStatus('Japanese OCR is ready');
     setOcrProgress(0);
+    setCaptureEvidence(current => ({ ...current, stage: 'Capture stopped. No additional frames will be read or submitted. An already submitted translation may finish.' }));
+  };
+
+  const retryRecognizedTranslation = async () => {
+    if (!recognizedJapanese || translatingRef.current || offlineBusy) return;
+    const key = recognizedJapanese.replace(/\s+/g, ' ');
+    const success = await translateText(recognizedJapanese);
+    if (success) {
+      recentTextRef.current = [...recentTextRef.current.slice(-29), key];
+      retryTextRef.current = null;
+    } else {
+      retryTextRef.current = { text: key, after: Date.now() + 30_000 };
+    }
+    setCaptureEvidence(current => ({ ...current, stage: success ? 'Recognized Japanese translated successfully. The result is in the journal.' : 'Japanese remains available. Translation failed; see the translation error.' }));
   };
 
   const submitText = manualForm.handleSubmit(({ text }) => {
@@ -518,7 +603,7 @@ function Home() {
     } catch { /* clipboard access is optional */ }
   };
 
-  const statusLabel = captureState === 'capturing' ? 'On the hunt' : captureState === 'paused' ? 'Paused' : captureState === 'error' ? 'Capture error' : 'At camp';
+  const statusLabel = captureState === 'starting' ? 'Starting capture' : captureState === 'capturing' ? 'On the hunt' : captureState === 'paused' ? 'Paused' : captureState === 'error' ? 'Capture error' : 'At camp';
   const latest = lines[0];
 
   if (isOverlay) {
@@ -569,7 +654,9 @@ function Home() {
                 </button>
               ) : (
                 <>
-                  {captureState === 'capturing' ? (
+                  {captureState === 'starting' ? (
+                    <span className="btn-chip" data-testid="status-capture-starting"><ScanText size={14} /> Starting capture...</span>
+                  ) : captureState === 'capturing' ? (
                     <button onClick={() => { captureStateRef.current = 'paused'; setCaptureState('paused'); }} className="btn-bronze" data-testid="button-pause-capture"><Pause size={14} /> Pause capture</button>
                   ) : (
                     <button onClick={() => { captureStateRef.current = 'capturing'; setCaptureState('capturing'); }} className="btn-bronze" data-testid="button-resume-capture"><Play size={14} /> Resume capture</button>
@@ -580,7 +667,13 @@ function Home() {
               <span className="ml-1 flex items-center gap-1.5 font-mono-ui text-[11px] text-[hsl(var(--muted-foreground))]" data-testid="status-ocr"><ScanText size={13} /> {captureState === 'capturing' ? `${ocrStatus}${ocrProgress > 0 && ocrProgress < 100 ? ` ${ocrProgress}%` : ''}` : 'Local Japanese text detection'}</span>
             </div>
             {captureError && <p className="alert-ember relative mt-3" role="alert" data-testid="text-capture-error"><CircleHelp size={14} className="shrink-0" />{captureError}</p>}
-            <div className={captureState === 'capturing' || captureState === 'paused' ? 'relative mt-5 space-y-2' : 'fixed -left-[10000px] top-0 h-px w-px overflow-hidden opacity-0'}>
+            <CaptureDiagnostics
+              evidence={captureEvidence}
+              japanese={recognizedJapanese}
+              busy={translationBusy || offlineBusy || recentTextRef.current.includes(recognizedJapanese.replace(/\s+/g, ' '))}
+              retry={() => { void retryRecognizedTranslation(); }}
+            />
+            <div className={captureState === 'starting' || captureState === 'capturing' || captureState === 'paused' ? 'relative mt-5 space-y-2' : 'fixed -left-[10000px] top-0 h-px w-px overflow-hidden opacity-0'}>
               <div
                 className={`relative w-full overflow-hidden border-2 border-[hsl(var(--bronze)/.55)] bg-[hsl(var(--ink))] ${selectingRegion ? 'cursor-crosshair touch-none' : ''}`}
                 style={{ aspectRatio: captureAspect || '16 / 9' }}

@@ -27,7 +27,7 @@ function describeError(error: unknown, action: string) {
   const status = (error as { status?: number } | null)?.status;
   if (status === 401 || status === 403 || status === 404) return 'No archive matches that recovery code. Check every character and try again.';
   if (status === 413) return 'The compiled dialogue is too large for the service. Remove some files and retry.';
-  if (status === 429) return 'Archive request limit reached (uploads: 5 per hour). Keep your local backup and try again later.';
+  if (status === 429) return 'Archive request limit reached (per-address or shared daily allowance). Keep your local backup and try again later.';
   if (status === 400) return 'The service rejected this archive. Check the title and dialogue lines, then retry.';
   return `The archive could not be ${action}. Check the service URL in Loadout and your connection, then retry.`;
 }
